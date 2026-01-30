@@ -1,0 +1,104 @@
+import request from '../utils/request'
+
+export interface ReservationRecord {
+  id: number
+  seatNumber: string
+  startTime: string
+  endTime: string
+  status: 'active' | 'completed' | 'cancelled' | 'violation'
+  type: 'appointment' | 'checkin'
+}
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+
+// Mock Data
+const mockHistory: ReservationRecord[] = [
+  {
+    id: 101,
+    seatNumber: 'A-01',
+    startTime: '2023-10-20 08:00',
+    endTime: '2023-10-20 12:00',
+    status: 'completed',
+    type: 'appointment'
+  },
+  {
+    id: 102,
+    seatNumber: 'B-05',
+    startTime: '2023-10-18 14:00',
+    endTime: '2023-10-18 18:00',
+    status: 'violation',
+    type: 'appointment'
+  },
+  {
+    id: 103,
+    seatNumber: 'C-10',
+    startTime: '2023-10-15 18:00',
+    endTime: '2023-10-15 22:00',
+    status: 'cancelled',
+    type: 'appointment'
+  },
+  {
+    id: 104,
+    seatNumber: 'A-02',
+    startTime: '2023-10-22 09:00',
+    endTime: '2023-10-22 11:30',
+    status: 'active',
+    type: 'checkin'
+  }
+]
+
+export function createReservation(data: { seatId: number, slot: string }) {
+  if (USE_MOCK) {
+    return new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  return request({
+    url: '/reservations',
+    method: 'post',
+    data
+  })
+}
+
+export function getMyHistory() {
+  if (USE_MOCK) {
+    return Promise.resolve(mockHistory)
+  }
+  return request<ReservationRecord[]>({
+    url: '/reservations/my-history',
+    method: 'get'
+  })
+}
+
+export function submitAppeal(id: number, data: { reason: string, images?: string[] }) {
+  if (USE_MOCK) {
+    return new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  return request({
+    url: `/reservations/${id}/appeal`,
+    method: 'post',
+    data
+  })
+}
+
+export function checkIn(id: number) {
+  if (USE_MOCK) return Promise.resolve()
+  return request({
+    url: `/reservations/${id}/check-in`,
+    method: 'post'
+  })
+}
+
+export function temporaryLeave(id: number) {
+  if (USE_MOCK) return Promise.resolve()
+  return request({
+    url: `/reservations/${id}/leave`,
+    method: 'post'
+  })
+}
+
+export function releaseSeat(id: number) {
+  if (USE_MOCK) return Promise.resolve()
+  return request({
+    url: `/reservations/${id}/release`,
+    method: 'post'
+  })
+}

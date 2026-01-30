@@ -1,0 +1,110 @@
+package com.library.seat.modules.reservation.controller;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.library.seat.common.Result;
+import com.library.seat.modules.reservation.entity.Appeal;
+import com.library.seat.modules.reservation.entity.Reservation;
+import com.library.seat.modules.reservation.service.ReservationService;
+import com.library.seat.modules.sys.entity.SysUser;
+import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+
+@Slf4j
+@Tag(name = "预约业务模块", description = "预约、签到、暂离、退座、申诉")
+@RestController
+@RequestMapping("/api/v1/reservations")
+public class ReservationController {
+
+    @Autowired
+    private ReservationService reservationService;
+    
+    @Autowired
+    private UserDetailsServiceImpl userDetailsService;
+
+    private Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            log.warn("Current user is not authenticated");
+            return null;
+        }
+        String username = auth.getName();
+        SysUser user = userDetailsService.lambdaQuery().eq(SysUser::getUsername, username).one();
+        return user != null ? user.getId() : null;
+    }
+
+    @Operation(summary = "创建预约")
+    @PostMapping
+    public Result<Boolean> reserve(@RequestBody Reservation reservation) {
+        log.info("Received reservation request: {}", reservation);
+        try {
+            Long userId = getCurrentUserId();
+            if (userId == null) {
+                return Result.error("用户未登录或Token失效");
+            }
+            reservation.setUserId(userId);
+            return reservationService.reserve(reservation);
+        } catch (Exception e) {
+            log.error("Failed to create reservation", e);
+            throw e; // Let global exception handler process it, or return Result.error
+        }
+    }
+
+    @Operation(summary = "签到")
+    @PostMapping("/{id}/check-in")
+    public Result<Boolean> checkIn(@PathVariable Long id) {
+        return reservationService.checkIn(id, getCurrentUserId());
+    }
+
+    @Operation(summary = "暂离")
+    @PostMapping("/{id}/leave")
+    public Result<Boolean> leave(@PathVariable Long id) {
+        return reservationService.leave(id, getCurrentUserId());
+    }
+
+    @Operation(summary = "主动退座")
+    @PostMapping("/{id}/release")
+    public Result<Boolean> release(@PathVariable Long id) {
+        return reservationService.release(id, getCurrentUserId());
+    }
+
+    @Operation(summary = "获取当前用户的历史记录")
+    @GetMapping("/my-history")
+    public Result<List<Reservation>> getMyHistory() {
+        return reservationService.getMyHistory(getCurrentUserId());
+    }
+
+    @Operation(summary = "提交违规申诉")
+    @PostMapping("/{id}/appeal")
+    public Result<Boolean> appeal(@PathVariable Long id, @RequestBody Appeal appeal) {
+        appeal.setReservationId(id);
+        return reservationService.appeal(appeal);
+    }
+    
+    @Operation(summary = "管理员强制释放座位")
+    @PostMapping("/{id}/force-release")
+    public Result<Boolean> forceRelease(@PathVariable Long id) {
+        // In real app, check for admin role here or via Security Config
+        return reservationService.forceRelease(id);
+    }
+    
+    @Operation(summary = "管理员处理申诉")
+    @PostMapping("/appeals/{id}/review")
+    public Result<Boolean> reviewAppeal(
+            @PathVariable Long id, 
+            @RequestBody Map<String, String> params) {
+        // params: status (approved/rejected), reply
+        String status = params.get("status");
+        String reply = params.get("reply");
+        return reservationService.reviewAppeal(id, status, reply);
+    }
+}

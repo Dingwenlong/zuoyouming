@@ -1,0 +1,31 @@
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build and Dependencies
+backend/target/
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+backend/logs/
+
+# Docker Data
+docker/mysql/data/
+docker/redis/data/
+
+# Trae documents
+.trae/
+backend/.trae/
+frontend/.trae/
+
+# Environment variables
+.env*.local

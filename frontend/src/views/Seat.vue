@@ -1,0 +1,438 @@
+<template>
+  <div class="seat-container">
+    <a-card :bordered="false" title="座位管理">
+      <template #extra>
+        <a-radio-group v-model:value="viewMode" button-style="solid">
+          <a-radio-button value="map">
+            <template #icon><compass-outlined /></template>
+            平面图
+          </a-radio-button>
+          <a-radio-button value="list">
+            <template #icon><bars-outlined /></template>
+            列表
+          </a-radio-button>
+          <a-radio-button value="grid">
+            <template #icon><appstore-outlined /></template>
+            卡片
+          </a-radio-button>
+        </a-radio-group>
+      </template>
+
+      <!-- 搜索区域 -->
+      <a-form layout="inline" class="search-form">
+        <a-form-item label="座位号">
+          <a-input
+            v-model:value="searchText"
+            placeholder="请输入座位号"
+            allow-clear
+            style="width: 180px"
+          >
+            <template #prefix>
+              <search-outlined />
+            </template>
+          </a-input>
+        </a-form-item>
+
+        <a-form-item label="状态">
+          <a-select v-model:value="statusFilter" style="width: 120px" placeholder="选择状态">
+            <a-select-option value="all">全部</a-select-option>
+            <a-select-option value="available">空闲</a-select-option>
+            <a-select-option value="occupied">占用</a-select-option>
+            <a-select-option value="maintenance">维护中</a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <a-form-item label="类型">
+          <a-select v-model:value="typeFilter" style="width: 120px" placeholder="选择类型">
+            <a-select-option value="all">全部</a-select-option>
+            <a-select-option value="standard">普通座</a-select-option>
+            <a-select-option value="window">靠窗座</a-select-option>
+            <a-select-option value="sofa">沙发座</a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <a-form-item>
+          <a-button type="primary" @click="onSearch">查询</a-button>
+          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+        </a-form-item>
+      </a-form>
+
+      <div class="seat-content mt-4">
+        <!-- Map View -->
+        <div v-if="viewMode === 'map'" class="seat-map-view">
+          <seat-map :seats="mapSeats" @select="handleMapSelect" />
+        </div>
+
+        <!-- Grid View -->
+        <div v-else-if="viewMode === 'grid'" class="seat-grid">
+          <a-row :gutter="[16, 16]">
+            <a-col :xs="12" :sm="8" :md="6" :lg="4" :xl="4" v-for="seat in filteredSeats" :key="seat.id">
+              <a-card hoverable class="seat-card" :class="seat.status">
+                <div class="seat-icon">
+                  <component :is="getSeatIcon(seat.status)" />
+                </div>
+                <div class="seat-info">
+                  <h3>{{ seat.seatNo }}</h3>
+                  <a-tag :color="getStatusColor(seat.status)">{{ getStatusText(seat.status) }}</a-tag>
+                </div>
+                <template #actions>
+                  <span v-if="seat.status === 'available'" @click="handleBook(seat)">预约</span>
+                  <span v-else style="cursor: not-allowed; color: #ccc">不可用</span>
+                </template>
+              </a-card>
+            </a-col>
+          </a-row>
+        </div>
+
+        <!-- List View -->
+        <a-table
+          v-else-if="viewMode === 'list'"
+          :columns="columns"
+          :data-source="filteredSeats"
+          :pagination="{ pageSize: 10, simple: isMobile }"
+          :scroll="{ x: 600 }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'status'">
+              <a-tag :color="getStatusColor(record.status)">
+                {{ getStatusText(record.status) }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <a-button
+                type="link"
+                :disabled="record.status !== 'available'"
+                @click="handleBook(record)"
+              >
+                预约
+              </a-button>
+            </template>
+          </template>
+        </a-table>
+      </div>
+    </a-card>
+
+    <a-modal
+      v-model:open="isModalVisible"
+      title="座位预约"
+      @ok="confirmBooking"
+      :confirmLoading="bookingLoading"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="当前选择">
+          <a-tag color="blue">{{ selectedSeat?.seatNo }}</a-tag>
+          <a-tag>{{ selectedSeat?.type }}</a-tag>
+        </a-form-item>
+        
+        <a-form-item label="预约时段" required>
+          <a-radio-group v-model:value="bookingForm.slot">
+            <a-radio value="morning">上午 (08:00-12:00)</a-radio>
+            <a-radio value="afternoon">下午 (13:00-17:00)</a-radio>
+            <a-radio value="evening">晚间 (18:00-22:00)</a-radio>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-alert
+          message="预约规则"
+          type="info"
+          show-icon
+        >
+          <template #description>
+            <ul style="padding-left: 20px; margin: 0;">
+              <li>预约后请在15分钟内签到</li>
+              <li>违约3次将被加入黑名单</li>
+              <li>最长保留4小时</li>
+            </ul>
+          </template>
+        </a-alert>
+      </a-form>
+
+      <template #footer>
+        <div v-if="userInfo?.role === 'admin' || userInfo?.role === 'librarian'" class="admin-actions">
+          <a-button danger @click="handleForceRelease" v-if="selectedSeat?.status !== 'available'">强制释放</a-button>
+          <a-button danger type="dashed" @click="handleSetFaulty" v-if="selectedSeat?.status !== 'maintenance'">设为故障</a-button>
+          <a-button @click="isModalVisible = false">取消</a-button>
+          <a-button type="primary" @click="confirmBooking" :loading="bookingLoading" v-if="selectedSeat?.status === 'available'">确定预约</a-button>
+        </div>
+        <div v-else>
+          <a-button @click="isModalVisible = false">取消</a-button>
+          <a-button type="primary" @click="confirmBooking" :loading="bookingLoading" :disabled="selectedSeat?.status !== 'available'">确定预约</a-button>
+        </div>
+      </template>
+    </a-modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import {
+  BarsOutlined,
+  AppstoreOutlined,
+  CompassOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  WarningOutlined,
+  SearchOutlined
+} from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import SeatMap, { type Seat as MapSeat } from '../components/Seat/SeatMap.vue'
+
+const viewMode = ref('map')
+const searchText = ref('')
+const statusFilter = ref('all')
+const typeFilter = ref('all')
+const isModalVisible = ref(false)
+const selectedSeat = ref<Seat | null>(null)
+const isMobile = ref(false)
+const bookingLoading = ref(false)
+const bookingForm = reactive({
+  slot: 'morning'
+})
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+import { wsService } from '../utils/websocket'
+import { useUserStore } from '../stores/user'
+import { getSeats, updateSeatStatus, type Seat } from '../api/seat'
+import { createReservation } from '../api/reservation'
+
+const userStore = useUserStore()
+const userInfo = computed(() => userStore.userInfo)
+
+const seats = ref<Seat[]>([])
+
+const fetchSeats = async () => {
+  try {
+    const res = await getSeats()
+    seats.value = Array.isArray(res) ? res : (res as any).data || []
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const handleSeatUpdate = (data: { id: number, status: string }) => {
+  const seat = seats.value.find(s => s.id === data.id)
+  if (seat) {
+    seat.status = data.status as any
+  }
+}
+
+onMounted(() => {
+  fetchSeats()
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  
+  // 连接 WebSocket
+  wsService.connect()
+  wsService.on('seat_update', handleSeatUpdate)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  wsService.off('seat_update', handleSeatUpdate)
+  wsService.disconnect()
+})
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'available': return 'success'
+    case 'occupied': return 'error'
+    case 'maintenance': return 'warning'
+    default: return 'default'
+  }
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'available': return '空闲'
+    case 'occupied': return '占用'
+    case 'maintenance': return '维护中'
+    default: return '未知'
+  }
+}
+
+const getSeatIcon = (status: string) => {
+  switch (status) {
+    case 'available': return CheckCircleOutlined
+    case 'occupied': return CloseCircleOutlined
+    case 'maintenance': return WarningOutlined
+    default: return CheckCircleOutlined
+  }
+}
+
+const mapSeats = computed<MapSeat[]>(() => {
+  return seats.value
+    .filter(seat => seat.id !== undefined) // 过滤掉 id 为 undefined 的座位
+    .map((seat, index) => {
+      const row = Math.floor(index / 6)
+      const col = index % 6
+      return {
+        id: seat.id!, // 断言 id 一定存在
+        label: seat.seatNo,
+        x: seat.x || 100 + col * 100,
+        y: seat.y || 100 + row * 80,
+        status: seat.status,
+        type: 'normal'
+      }
+    })
+})
+
+const filteredSeats = computed(() => {
+  return seats.value.filter(seat => {
+    const matchText = seat.seatNo.toLowerCase().includes(searchText.value.toLowerCase())
+    const matchStatus = statusFilter.value === 'all' || seat.status === statusFilter.value
+    const matchType = typeFilter.value === 'all' || seat.type === typeFilter.value
+    return matchText && matchStatus && matchType
+  })
+})
+
+const handleBook = (seat: Seat) => {
+  if (userStore.userInfo?.role === 'guest') {
+    message.info('访客仅可查看座位状态，请登录后预约')
+    return
+  }
+  selectedSeat.value = seat
+  isModalVisible.value = true
+}
+
+const handleMapSelect = (mapSeat: MapSeat) => {
+  const seat = seats.value.find(s => s.id === mapSeat.id)
+  if (seat) {
+    handleBook(seat)
+  }
+}
+
+const onSearch = () => {
+  // Logic handled by computed property
+}
+
+const handleReset = () => {
+  searchText.value = ''
+  statusFilter.value = 'all'
+  typeFilter.value = 'all'
+}
+
+const columns = [
+  { title: '座位号', dataIndex: 'number', key: 'number' },
+  { title: '类型', dataIndex: 'type', key: 'type' },
+  { title: '状态', dataIndex: 'status', key: 'status' },
+  { title: '操作', key: 'action' }
+]
+
+const handleForceRelease = async () => {
+  if (selectedSeat.value) {
+    try {
+      await updateSeatStatus(selectedSeat.value.id!, 'available')
+      selectedSeat.value.status = 'available'
+      message.success('已强制释放该座位')
+      isModalVisible.value = false
+    } catch (error) {
+      message.error('操作失败')
+    }
+  }
+}
+
+const handleSetFaulty = async () => {
+  if (selectedSeat.value) {
+    try {
+      await updateSeatStatus(selectedSeat.value.id!, 'maintenance')
+      selectedSeat.value.status = 'maintenance'
+      message.warning('已将该座位设为故障状态')
+      isModalVisible.value = false
+    } catch (error) {
+      message.error('操作失败')
+    }
+  }
+}
+
+const confirmBooking = async () => {
+  if (!bookingForm.slot) {
+    message.warning('请选择预约时段')
+    return
+  }
+  
+  bookingLoading.value = true
+  try {
+    if (selectedSeat.value) {
+      await createReservation({
+        seatId: selectedSeat.value.id!,
+        slot: bookingForm.slot
+      })
+      
+      selectedSeat.value.status = 'occupied'
+      // 触发全局倒计时
+      userStore.setReservation(selectedSeat.value.id!, selectedSeat.value.seatNo)
+      
+      message.success(`预约成功！请在规定时间内签到。`)
+      isModalVisible.value = false
+    }
+  } catch (error) {
+    message.error('预约失败')
+  } finally {
+    bookingLoading.value = false
+  }
+}
+</script>
+
+<style scoped>
+.seat-container {
+  padding: 24px;
+}
+
+.search-form {
+  margin-bottom: 24px;
+}
+
+.mt-4 {
+  margin-top: 16px;
+}
+
+.seat-grid {
+  margin-top: 16px;
+}
+
+.seat-card {
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.seat-card.available:hover {
+  border-color: #52c41a;
+  transform: translateY(-4px);
+}
+
+.seat-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.available .seat-icon { color: #52c41a; }
+.occupied .seat-icon { color: #ff4d4f; }
+.maintenance .seat-icon { color: #faad14; }
+
+.seat-info h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+@media screen and (max-width: 576px) {
+  .search-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-form :deep(.ant-form-item) {
+    margin-right: 0;
+    margin-bottom: 12px;
+  }
+}
+
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+</style>
