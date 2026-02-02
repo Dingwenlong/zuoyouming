@@ -64,3 +64,39 @@ body {
     padding: 12px 0 !important;
   }
 }
+
+/* Global Search Form Spacing & Wrap Optimization */
+.search-form.ant-form-inline {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  row-gap: 16px !important;
+  column-gap: 24px !important;
+  margin-bottom: 24px !important;
+}
+
+/* Reset default margins to use flex gap instead */
+.search-form.ant-form-inline .ant-form-item {
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Mobile specific overrides for search form */
+@media screen and (max-width: 576px) {
+  .search-form.ant-form-inline {
+    flex-direction: column !important;
+    row-gap: 12px !important;
+  }
+  
+  .search-form.ant-form-inline .ant-form-item {
+    width: 100% !important;
+  }
+  
+  .search-form.ant-form-inline .ant-form-item :deep(.ant-form-item-control-input-content) {
+    width: 100% !important;
+  }
+  
+  .search-form.ant-form-inline .ant-input,
+  .search-form.ant-form-inline .ant-select {
+    width: 100% !important;
+  }
+}

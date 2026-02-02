@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { type LoginParams, type RegisterParams, type UserInfo, login, register, guestLogin, wechatLogin, logout } from '../api/auth'
 import { getMenus, type MenuItem } from '../api/menu'
+import { getActiveReservation } from '../api/reservation'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref<string>(localStorage.getItem('token') || '')
@@ -27,6 +28,7 @@ export const useUserStore = defineStore('user', () => {
 
   // 预约状态管理
   const reservation = ref<{
+    id: number
     seatId: number
     seatNo: string
     deadline: number // 截止时间戳
@@ -37,9 +39,9 @@ export const useUserStore = defineStore('user', () => {
       : null
   )
 
-  function setReservation(seatId: number, seatNo: string) {
+  function setReservation(id: number, seatId: number, seatNo: string) {
     const deadline = Date.now() + 15 * 60 * 1000 // 15分钟后截止
-    const data = { seatId, seatNo, deadline, status: 'reserved' as const }
+    const data = { id, seatId, seatNo, deadline, status: 'reserved' as const }
     reservation.value = data
     localStorage.setItem('reservation', JSON.stringify(data))
   }
@@ -174,8 +176,33 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function syncReservationStatus() {
+    try {
+      const res = await getActiveReservation()
+      const activeRes = (res as any).data
+      
+      if (activeRes) {
+        // 同步后端状态到本地
+        const deadline = activeRes.deadline ? new Date(activeRes.deadline).getTime() : Date.now() + 15 * 60 * 1000
+        const data = {
+          id: activeRes.id,
+          seatId: activeRes.seatId,
+          seatNo: activeRes.seatNo || '',
+          deadline: deadline,
+          status: activeRes.status as any
+        }
+        reservation.value = data
+        localStorage.setItem('reservation', JSON.stringify(data))
+      } else {
+        // 如果后端没有活跃预约，清理本地缓存
+        clearReservation()
+      }
+    } catch (e) {
+      console.error('Failed to sync reservation status:', e)
+    }
+  }
+
   return {
-    // ... (exports remain the same)
     token,
     userInfo,
     menus,
@@ -192,6 +219,7 @@ export const useUserStore = defineStore('user', () => {
     handleWeChatLogin,
     completeBinding,
     handleLogout,
-    fetchMenus
+    fetchMenus,
+    syncReservationStatus
   }
 })

@@ -5,8 +5,10 @@
         <a-space>
           <a-button type="primary" @click="handleAdd">新增座位</a-button>
           <a-button @click="showImportModal">批量导入</a-button>
+          <a-button danger @click="handleClearAll">清空所有</a-button>
           <a-button 
             danger 
+            type="dashed"
             :disabled="!selectedRowKeys.length" 
             @click="handleBatchDelete"
           >
@@ -130,6 +132,11 @@
       :confirmLoading="importing"
       width="600px"
     >
+      <template #footer>
+        <a-button @click="importVisible = false">取消</a-button>
+        <a-button type="dashed" @click="handleGenerateRandom">生成随机数据</a-button>
+        <a-button type="primary" :loading="importing" @click="handleImport">确定导入</a-button>
+      </template>
       <a-alert
         message="格式说明"
         description="请输入 JSON 数组格式，例如：[{'seatNo': 'A-01', 'area': 'A区', 'type': '标准', 'status': 'available'}, ...]"
@@ -147,8 +154,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
+import { wsService } from '../../utils/websocket'
 import { 
   getSeats, 
   addSeat, 
@@ -156,6 +164,7 @@ import {
   deleteSeat, 
   batchDeleteSeats, 
   batchImportSeats,
+  deleteAllSeats,
   type Seat 
 } from '../../api/seat'
 
@@ -172,6 +181,13 @@ const pagination = reactive({
   pageSize: 10,
   total: 0
 })
+
+const handleSeatUpdate = (data: { id: number, status: string }) => {
+  const seat = seats.value.find(s => s.id === data.id)
+  if (seat) {
+    seat.status = data.status as any
+  }
+}
 
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
@@ -225,6 +241,41 @@ const rules = {
 const importVisible = ref(false)
 const importing = ref(false)
 const importData = ref('')
+
+const handleGenerateRandom = () => {
+  const areas = ['A区', 'B区', 'C区', 'D区']
+  const types = ['标准', '靠窗', '插座']
+  const randomData: any[] = []
+  const count = 20 // 默认生成20个
+  
+  // 获取当前时间戳尾数确保座位号不重复
+  const timestamp = Date.now().toString().slice(-4)
+  
+  // 使用网格布局确保间距不低于 100
+  // 每行放 5 个，间距为 120 (x) 和 100 (y)
+  const colCount = 5
+  
+  for (let i = 0; i < count; i++) {
+    const area = areas[Math.floor(Math.random() * areas.length)]
+    const seatNo = `${area.charAt(0)}-${timestamp}${i.toString().padStart(2, '0')}`
+    
+    const row = Math.floor(i / colCount)
+    const col = i % colCount
+    
+    randomData.push({
+      seatNo,
+      area,
+      type: types[Math.floor(Math.random() * types.length)],
+      status: 'available',
+      // X 间距 120，Y 间距 100，起始偏移 50
+      x: 50 + col * 120,
+      y: 50 + row * 100
+    })
+  }
+  
+  importData.value = JSON.stringify(randomData, null, 2)
+  message.success(`已生成 ${count} 条符合间距要求(>=100)的随机数据`)
+}
 
 // Methods
 const fetchSeats = async () => {
@@ -314,6 +365,25 @@ const handleBatchDelete = () => {
   })
 }
 
+const handleClearAll = () => {
+  Modal.confirm({
+    title: '确认清空所有座位',
+    content: '此操作将删除系统中所有座位及其关联的活跃预约，操作不可撤销，确定继续吗？',
+    okText: '确定清空',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await deleteAllSeats()
+        message.success('所有座位已成功清空')
+        fetchSeats()
+      } catch (error) {
+        message.error('清空失败')
+      }
+    }
+  })
+}
+
 const showImportModal = () => {
   importData.value = ''
   importVisible.value = true
@@ -341,14 +411,17 @@ const handleImport = async () => {
 
 onMounted(() => {
   fetchSeats()
+  wsService.connect()
+  wsService.on('seat_update', handleSeatUpdate)
+})
+
+onUnmounted(() => {
+  wsService.off('seat_update', handleSeatUpdate)
+  // Remove disconnect() here to prevent killing the global connection in SPA
 })
 </script>
 
 <style scoped>
-.search-form {
-  margin-bottom: 16px;
-}
-
 .text-red-500 {
   color: #ff4d4f;
 }

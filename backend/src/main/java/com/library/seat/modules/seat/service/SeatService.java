@@ -5,14 +5,37 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.library.seat.common.Result;
 import com.library.seat.modules.seat.entity.Seat;
 import com.library.seat.modules.seat.mapper.SeatMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class SeatService extends ServiceImpl<SeatMapper, Seat> {
+
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.library.seat.modules.reservation.service.ReservationService reservationService;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.library.seat.modules.reservation.service.StatsService statsService;
+
+    public void broadcastSeatUpdate(Long seatId, String status) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("id", seatId); // Change to 'id' to match frontend handleSeatUpdate
+        message.put("status", status);
+        message.put("event", "seat_update");
+        messagingTemplate.convertAndSend("/topic/seats", message);
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public Result<Boolean> addSeat(Seat seat) {
@@ -92,5 +115,28 @@ public class SeatService extends ServiceImpl<SeatMapper, Seat> {
             }
         }
         return Result.success(true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> deleteAll() {
+        // 1. 先清理所有活跃预约
+        List<Seat> activeSeats = this.list(new LambdaQueryWrapper<Seat>()
+                .eq(Seat::getDeleted, 0)
+                .eq(Seat::getStatus, "occupied"));
+        
+        for (Seat seat : activeSeats) {
+            reservationService.terminateActiveReservationBySeat(seat.getId(), "admin_clear_all_seats", false);
+        }
+
+        // 2. 逻辑删除所有座位
+        boolean success = this.update(new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Seat>()
+                .set(Seat::getDeleted, 1)
+                .set(Seat::getUpdateTime, new Date())
+                .eq(Seat::getDeleted, 0));
+        
+        // 3. 广播统计信息更新 (只广播一次)
+        statsService.broadcastStats();
+        
+        return Result.success(success);
     }
 }

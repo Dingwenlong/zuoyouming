@@ -80,21 +80,27 @@
         </div>
         
         <div class="header-right">
-          <!-- 全局倒计时 -->
-          <reservation-timer />
+          <div class="header-actions">
+            <!-- 全局倒计时 -->
+            <reservation-timer />
 
-          <a-tooltip title="全屏" v-if="!isMobile">
-            <div class="tool-item" @click="toggleFullscreen">
-              <fullscreen-outlined v-if="!isFullscreen" />
-              <fullscreen-exit-outlined v-else />
+            <div class="action-icons">
+              <a-tooltip title="全屏" v-if="!isMobile">
+                <div class="tool-item" @click="toggleFullscreen">
+                  <fullscreen-outlined v-if="!isFullscreen" />
+                  <fullscreen-exit-outlined v-else />
+                </div>
+              </a-tooltip>
+              
+              <a-tooltip title="刷新">
+                <div class="tool-item" @click="handleRefresh">
+                  <reload-outlined :spin="isRefreshing" />
+                </div>
+              </a-tooltip>
+
+              <notification-bell />
             </div>
-          </a-tooltip>
-          
-          <a-tooltip title="刷新">
-            <div class="tool-item" @click="handleRefresh">
-              <reload-outlined :spin="isRefreshing" />
-            </div>
-          </a-tooltip>
+          </div>
 
           <a-dropdown>
             <div class="user-container">
@@ -111,6 +117,9 @@
                 <template v-if="userInfo?.role !== 'guest'">
                   <a-menu-item key="profile" @click="router.push('/profile/info')">
                     <user-outlined /> 个人中心
+                  </a-menu-item>
+                  <a-menu-item key="history" @click="router.push('/profile/history')">
+                    <history-outlined /> 预约/签到记录
                   </a-menu-item>
                   <a-menu-divider />
                   <a-menu-item key="logout" @click="handleLogout">
@@ -149,11 +158,13 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   ReloadOutlined,
-  LogoutOutlined
+  LogoutOutlined,
+  HistoryOutlined
 } from '@ant-design/icons-vue'
 import { useUserStore } from '../stores/user'
 import { message, notification } from 'ant-design-vue'
 import SubMenu from './components/Menu/SubMenu.vue'
+import NotificationBell from './components/Notification/NotificationBell.vue'
 import ReservationTimer from '../components/Global/ReservationTimer.vue'
 import { wsService } from '../utils/websocket'
 
@@ -233,6 +244,7 @@ const toggleFullscreen = () => {
 const handleLogout = async () => {
   try {
     await userStore.handleLogout()
+    wsService.disconnect(true) // Force disconnect on logout
     message.success('已成功退出')
   } catch (error) {
     console.error('Logout error:', error)
@@ -250,6 +262,23 @@ const handleAlert = (data: { message: string, type?: 'info' | 'warning' | 'error
   })
 }
 
+// WebSocket Reservation Updates
+const handleReservationUpdate = (data: { event: string, reason: string }) => {
+  if (data.event === 'reservation_ended') {
+    userStore.clearReservation()
+    let reasonText = '预约已结束'
+    if (data.reason === 'admin_force_release') reasonText = '管理员已强制释放您的座位'
+    if (data.reason === 'violation') reasonText = '因超时未签到/返回，预约已取消'
+    if (data.reason === 'expired') reasonText = '预约已到期'
+    
+    notification.info({
+      message: '预约状态更新',
+      description: reasonText,
+      placement: 'bottomRight'
+    })
+  }
+}
+
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -262,11 +291,13 @@ onMounted(async () => {
   // 监听告警
   wsService.connect()
   wsService.on('alert', handleAlert)
+  wsService.on('reservation_update', handleReservationUpdate)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   wsService.off('alert', handleAlert)
+  wsService.off('reservation_update', handleReservationUpdate)
 })
 </script>
 
@@ -411,6 +442,19 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  margin-right: 8px;
+}
+
+.action-icons {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .tool-item {
   padding: 0 12px;
   cursor: pointer;
@@ -418,12 +462,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   transition: all 0.3s;
-  color: var(--g-header-color);
+  color: rgba(0, 0, 0, 0.75);
   font-size: 16px;
 }
 
 .tool-item:hover {
-  background: rgba(0, 0, 0, 0.025);
+  background: rgba(0, 0, 0, 0.06);
   color: var(--color-primary);
 }
 

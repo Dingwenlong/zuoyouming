@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.StringUtils;
@@ -33,23 +34,37 @@ public class SysUserController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @Operation(summary = "分页获取用户列表")
-    @GetMapping
+    @Autowired
+    private com.library.seat.modules.sys.service.ISysNotificationService notificationService;
+
+    @Operation(summary = "获取用户列表")
+    @GetMapping("/list")
+    @PreAuthorize("hasAuthority('admin')")
     public Result<Page<SysUser>> list(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
             @RequestParam(required = false) String username,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String realName) {
+        Page<SysUser> pageObj = new Page<>(page, size);
+        LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
         
-        Page<SysUser> pageParam = new Page<>(page, size);
-        return Result.success(userService.page(pageParam, new LambdaQueryWrapper<SysUser>()
-                .like(StringUtils.hasText(username), SysUser::getUsername, username)
-                .eq(StringUtils.hasText(status), SysUser::getStatus, status)
-                .orderByDesc(SysUser::getCreateTime)));
+        // 如果两个参数相同（来自消息广场的模糊搜索），使用 OR 逻辑
+        if (StringUtils.hasText(username) && username.equals(realName)) {
+            queryWrapper.and(q -> q.like(SysUser::getUsername, username)
+                    .or()
+                    .like(SysUser::getRealName, realName));
+        } else {
+            queryWrapper.like(StringUtils.hasText(username), SysUser::getUsername, username)
+                        .like(StringUtils.hasText(realName), SysUser::getRealName, realName);
+        }
+        
+        queryWrapper.orderByDesc(SysUser::getCreateTime);
+        return Result.success(userService.page(pageObj, queryWrapper));
     }
 
     @Operation(summary = "新增用户")
     @PostMapping
+    @PreAuthorize("hasAuthority('admin')")
     public Result<Boolean> add(@RequestBody SysUser user) {
         if (StringUtils.hasText(user.getPassword())) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
@@ -57,18 +72,26 @@ public class SysUserController {
         return Result.success(userService.save(user));
     }
 
-    @Operation(summary = "更新用户信息")
+    @Operation(summary = "修改用户")
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('admin')")
     public Result<Boolean> update(@PathVariable Long id, @RequestBody SysUser user) {
         user.setId(id);
         if (StringUtils.hasText(user.getPassword())) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
+        } else {
+            user.setPassword(null); // Ensure empty password doesn't overwrite existing one
         }
-        return Result.success(userService.updateById(user));
+        boolean success = userService.updateById(user);
+        if (success) {
+            notificationService.send(id, "个人信息修改通知", "管理员已修改您的个人信息，请检查是否正确。", "info");
+        }
+        return Result.success(success);
     }
 
     @Operation(summary = "修改用户状态")
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('admin')")
     public Result<Boolean> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> params) {
         String status = params.get("status");
         if (status == null) {

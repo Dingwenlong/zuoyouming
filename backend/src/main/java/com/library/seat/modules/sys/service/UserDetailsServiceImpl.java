@@ -42,10 +42,15 @@ public class UserDetailsServiceImpl extends ServiceImpl<SysUserMapper, SysUser> 
         if (user != null) {
             int newScore = Math.max(0, user.getCreditScore() - score);
             user.setCreditScore(newScore);
-            // Check if ban is needed (e.g. < 60)
-            if (newScore < 60) {
-                // user.setStatus("banned"); // Optional: auto ban
-            }
+            this.updateById(user);
+        }
+    }
+
+    public void addCreditScore(Long userId, int score) {
+        SysUser user = this.getById(userId);
+        if (user != null) {
+            int newScore = Math.min(100, user.getCreditScore() + score);
+            user.setCreditScore(newScore);
             this.updateById(user);
         }
     }

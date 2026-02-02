@@ -33,17 +33,25 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import BaseChart from '../components/Chart/BaseChart.vue'
-import { getHeatmapData } from '../api/stats'
+import { getHeatmapData, getCongestionData, getViolationTrend } from '../api/stats'
 
 const hours = ['8:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
 const days = ['A区', 'B区', 'C区', 'D区', 'E区']
 
 const heatmapData = ref([])
+const congestionData = ref<Record<string, number>>({})
+const violationData = ref({ dates: [], counts: [] })
 
 onMounted(async () => {
   try {
-    const data = await getHeatmapData()
-    heatmapData.value = (data as any).data || data
+    const [hRes, cRes, vRes] = await Promise.all([
+      getHeatmapData(),
+      getCongestionData(),
+      getViolationTrend()
+    ])
+    heatmapData.value = (hRes as any).data || hRes
+    congestionData.value = (cRes as any).data || cRes
+    violationData.value = (vRes as any).data || vRes
   } catch (error) {
     console.error(error)
   }
@@ -51,11 +59,15 @@ onMounted(async () => {
 
 // 1. 区域拥堵度配置
 const congestionOption = computed(() => ({
-  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  tooltip: { 
+    trigger: 'axis', 
+    axisPointer: { type: 'shadow' },
+    formatter: '{b}: {c}%'
+  },
   grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
   xAxis: {
     type: 'category',
-    data: ['A区(自习)', 'B区(阅览)', 'C区(电子)', 'D区(研讨)', 'E区(休闲)'],
+    data: Object.keys(congestionData.value),
     axisTick: { alignWithLabel: true }
   },
   yAxis: { type: 'value', name: '占用率(%)', max: 100 },
@@ -64,12 +76,12 @@ const congestionOption = computed(() => ({
       name: '占用率',
       type: 'bar',
       barWidth: '60%',
-      data: [85, 92, 45, 70, 30],
+      data: Object.values(congestionData.value),
       itemStyle: {
         color: (params: any) => {
           const val = params.value
-          if (val > 90) return '#cf1322' // 极度拥堵
-          if (val > 70) return '#faad14' // 拥堵
+          if (val > 80) return '#cf1322' // 极度拥堵
+          if (val > 50) return '#faad14' // 拥堵
           return '#3f8600' // 舒适
         }
       }
@@ -80,27 +92,29 @@ const congestionOption = computed(() => ({
 // 2. 违规趋势配置
 const violationOption = computed(() => ({
   tooltip: { trigger: 'axis' },
-  legend: { data: ['违约未签到', '超时未离座'] },
   xAxis: {
     type: 'category',
     boundaryGap: false,
-    data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+    data: violationData.value.dates
   },
   yAxis: { type: 'value' },
   series: [
     {
-      name: '违约未签到',
+      name: '违规次数',
       type: 'line',
       smooth: true,
-      data: [12, 5, 8, 15, 6, 4, 10],
-      itemStyle: { color: '#ff4d4f' }
-    },
-    {
-      name: '超时未离座',
-      type: 'line',
-      smooth: true,
-      data: [3, 2, 5, 1, 4, 8, 2],
-      itemStyle: { color: '#fa8c16' }
+      data: violationData.value.counts,
+      itemStyle: { color: '#ff4d4f' },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(255, 77, 79, 0.4)' },
+            { offset: 1, color: 'rgba(255, 77, 79, 0.1)' }
+          ]
+        }
+      }
     }
   ]
 }))
@@ -126,7 +140,7 @@ const heatmapOption = computed(() => ({
     left: 'center',
     bottom: '15%',
     inRange: {
-      color: ['#f0f9ff', '#bae6fd', '#0ea5e9', '#0369a1']
+      color: ['#fff7ed', '#ffedd5', '#fdba74', '#f97316', '#ea580c', '#9a3412'] // 橙红色系热力图
     }
   },
   series: [
@@ -134,7 +148,10 @@ const heatmapOption = computed(() => ({
       name: '拥挤度',
       type: 'heatmap',
       data: heatmapData.value,
-      label: { show: true },
+      label: { 
+        show: true,
+        formatter: (params: any) => params.data[2] > 20 ? params.data[2] + '%' : '' // 只在较热区域显示百分比
+      },
       emphasis: {
         itemStyle: {
           shadowBlur: 10,

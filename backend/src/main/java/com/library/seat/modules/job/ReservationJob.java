@@ -36,14 +36,9 @@ public class ReservationJob {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    private void broadcastSeatUpdate(Long seatId, String status) {
-        Map<String, Object> message = new HashMap<>();
-        message.put("seatId", seatId);
-        message.put("status", status);
-        message.put("event", "seat_update");
-        messagingTemplate.convertAndSend("/topic/seats", message);
-    }
-    
+    @Autowired
+    private com.library.seat.modules.sys.service.SysLogService sysLogService;
+
     private void sendUserAlert(Long userId, String message) {
         // Send to specific user: /user/{userId}/queue/alerts
         // Note: Client needs to subscribe to /user/queue/alerts
@@ -55,7 +50,7 @@ public class ReservationJob {
     }
 
     /**
-     * 每分钟检查违约记录
+     * 每分钟检查违约记录及临近到期提醒
      */
     @Scheduled(cron = "0 * * * * ?")
     @Transactional(rollbackFor = Exception.class)
@@ -63,6 +58,7 @@ public class ReservationJob {
         log.info("Executing Violation Check Job...");
         
         Date now = new Date();
+        Date soon = new Date(System.currentTimeMillis() + 5 * 60 * 1000); // 5 mins later
         
         // 1. Check 15-min no-show (reserved -> violation)
         List<Reservation> noShows = reservationService.list(new LambdaQueryWrapper<Reservation>()
@@ -81,6 +77,19 @@ public class ReservationJob {
         for (Reservation res : timeOuts) {
             handleViolation(res, "Away timeout violation");
         }
+
+        // 3. Proactive Reminders (5 mins before deadline)
+        List<Reservation> soonToExpire = reservationService.list(new LambdaQueryWrapper<Reservation>()
+                .in(Reservation::getStatus, "reserved", "away")
+                .gt(Reservation::getDeadline, now)
+                .lt(Reservation::getDeadline, soon));
+
+        for (Reservation res : soonToExpire) {
+            String msg = res.getStatus().equals("reserved") ? 
+                "您的预约即将在5分钟内过期，请尽快签到！" : 
+                "您的暂离时间即将在5分钟内过期，请尽快返回签到！";
+            sendUserAlert(res.getUserId(), msg);
+        }
     }
     
     private void handleViolation(Reservation res, String reason) {
@@ -95,14 +104,26 @@ public class ReservationJob {
         if (seat != null) {
             seat.setStatus("available");
             seatService.updateById(seat);
-            broadcastSeatUpdate(seat.getId(), "available");
+            seatService.broadcastSeatUpdate(seat.getId(), "available");
         }
         
         // Deduct credit score (-10)
         userDetailsService.deductCreditScore(res.getUserId(), 10);
         
-        // Notify user
-        sendUserAlert(res.getUserId(), "Your reservation has been cancelled due to violation: " + reason);
+        // Notify user via alert
+        sendUserAlert(res.getUserId(), "您的预约因违规已取消: " + reason);
+
+        // 发送系统通知
+        reservationService.getNotificationService().send(res.getUserId(), "违规取消通知", "您预约的座位因超时未签到或未返回已被自动释放，信用分已扣除。", "error");
+
+        // 通知前端清理状态 (解决卡顿)
+        reservationService.broadcastReservationUpdate(res.getUserId(), "reservation_ended", "violation");
+
+        // 记录日志
+        com.library.seat.modules.sys.entity.SysUser user = userDetailsService.getById(res.getUserId());
+        if (user != null && seat != null) {
+            sysLogService.log("system", "预约违规", "用户: " + user.getUsername() + ", 座位: " + seat.getSeatNo() + ", 原因: " + reason);
+        }
     }
 
     /**
@@ -132,8 +153,11 @@ public class ReservationJob {
             if (seat != null) {
                 seat.setStatus("available");
                 seatService.updateById(seat);
-                broadcastSeatUpdate(seat.getId(), "available");
+                seatService.broadcastSeatUpdate(seat.getId(), "available");
             }
+
+            // 通知前端清理状态
+            reservationService.broadcastReservationUpdate(res.getUserId(), "reservation_ended", "expired");
         }
     }
 }

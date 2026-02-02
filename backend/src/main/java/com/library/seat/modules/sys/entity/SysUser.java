@@ -3,6 +3,7 @@ package com.library.seat.modules.sys.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.io.Serializable;
@@ -18,9 +19,10 @@ public class SysUser implements Serializable {
     @Schema(description = "用户ID")
     private Long id;
     
-    @Schema(description = "登录账号", example = "admin")
+    @Schema(description = "登录账号")
     private String username;
     
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Schema(description = "密码")
     private String password;
 

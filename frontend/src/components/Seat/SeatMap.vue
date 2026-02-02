@@ -29,53 +29,50 @@
         <rect
           x="0"
           y="0"
-          :width="mapWidth"
-          :height="mapHeight"
+          :width="dynamicMapSize.width"
+          :height="dynamicMapSize.height"
           fill="#f8fafc"
           stroke="#e2e8f0"
           stroke-width="2"
         />
 
-        <!-- 装饰物：讲台 -->
-        <rect
-          :x="mapWidth / 2 - 60"
-          y="20"
-          width="120"
-          height="40"
-          fill="#cbd5e1"
-          rx="4"
-        />
-        <text
-          :x="mapWidth / 2"
-          y="45"
-          text-anchor="middle"
-          fill="#64748b"
-          font-size="14"
-        >讲台</text>
-
         <!-- 座位层 -->
         <g v-for="seat in seats" :key="seat.id">
+          <!-- 胡桃木色桌台 -->
+          <rect
+            :x="seat.x"
+            :y="seat.y - 15"
+            :width="seatWidth"
+            :height="12"
+            :rx="2"
+            fill="#5d4037"
+            stroke="#3e2723"
+            stroke-width="1"
+            class="desk-rect"
+          />
           <!-- 座位图标 -->
           <rect
             :x="seat.x"
             :y="seat.y"
-            :width="seatSize"
-            :height="seatSize"
-            :rx="8"
+            :width="seatWidth"
+            :height="seatHeight"
+            :rx="4"
             :fill="getSeatColor(seat)"
-            :stroke="selectedSeatId === seat.id ? '#3b82f6' : 'none'"
-            :stroke-width="selectedSeatId === seat.id ? 3 : 0"
+            :stroke="selectedSeatId === seat.id ? '#1e3a8a' : 'rgba(0,0,0,0.1)'"
+            :stroke-width="selectedSeatId === seat.id ? 2 : 1"
             class="seat-rect"
             @click="handleSeatClick(seat)"
           />
           <!-- 座位号 -->
           <text
-            :x="seat.x + seatSize / 2"
-            :y="seat.y + seatSize / 2 + 5"
+            :x="seat.x + seatWidth / 2"
+            :y="seat.y + seatHeight / 2 + 5"
             text-anchor="middle"
             fill="#fff"
             font-size="12"
+            font-weight="bold"
             pointer-events="none"
+            class="seat-label"
           >{{ seat.label }}</text>
         </g>
       </g>
@@ -98,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { PlusOutlined, MinusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 
 export interface Seat {
@@ -118,9 +115,21 @@ const emit = defineEmits(['select'])
 
 const width = ref(800)
 const height = ref(600)
-const mapWidth = 800
-const mapHeight = 600
-const seatSize = 40
+const seatWidth = 60
+const seatHeight = 40
+
+const dynamicMapSize = computed(() => {
+  if (props.seats.length === 0) return { width: 800, height: 600 }
+  
+  const maxX = Math.max(...props.seats.map(s => s.x + seatWidth))
+  const maxY = Math.max(...props.seats.map(s => s.y + seatHeight))
+  
+  // 留出 100px 的边距，且最小不低于 800x600
+  return {
+    width: Math.max(800, maxX + 100),
+    height: Math.max(600, maxY + 100)
+  }
+})
 
 const selectedSeatId = ref<number | null>(null)
 
@@ -136,12 +145,12 @@ let startX = 0
 let startY = 0
 
 const getSeatColor = (seat: Seat) => {
-  if (seat.id === selectedSeatId.value) return '#3b82f6' // 选中蓝
+  if (seat.id === selectedSeatId.value) return '#2563eb' // 选中深蓝
   switch (seat.status) {
-    case 'available': return '#10b981' // 绿色
-    case 'occupied': return '#ef4444' // 红色
-    case 'maintenance': return '#94a3b8' // 灰色
-    default: return '#cbd5e1'
+    case 'available': return '#059669' // 翠绿色
+    case 'occupied': return '#dc2626' // 鲜红色
+    case 'maintenance': return '#475569' // 深灰色
+    default: return '#64748b'
   }
 }
 
@@ -248,9 +257,9 @@ onMounted(() => {
   margin-right: 6px;
 }
 
-.dot.available { background: #10b981; }
-.dot.occupied { background: #ef4444; }
-.dot.selected { background: #3b82f6; }
+.dot.available { background: #059669; }
+.dot.occupied { background: #dc2626; }
+.dot.selected { background: #2563eb; }
 
 .seat-rect {
   cursor: pointer;
@@ -259,5 +268,15 @@ onMounted(() => {
 
 .seat-rect:hover {
   filter: brightness(0.9);
+}
+
+.desk-rect {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+}
+
+.seat-label {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  user-select: none;
 }
 </style>

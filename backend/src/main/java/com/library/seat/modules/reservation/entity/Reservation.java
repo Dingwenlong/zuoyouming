@@ -1,6 +1,7 @@
 package com.library.seat.modules.reservation.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -23,6 +24,10 @@ public class Reservation implements Serializable {
     
     @Schema(description = "座位ID")
     private Long seatId;
+
+    @TableField(exist = false)
+    @Schema(description = "座位号")
+    private String seatNo;
     
     @Schema(description = "开始时间")
     private Date startTime;

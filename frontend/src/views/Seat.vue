@@ -1,6 +1,6 @@
 <template>
   <div class="seat-container">
-    <a-card :bordered="false" title="座位管理">
+    <a-card :bordered="false" title="座位预约">
       <template #extra>
         <a-radio-group v-model:value="viewMode" button-style="solid">
           <a-radio-button value="map">
@@ -20,12 +20,21 @@
 
       <!-- 搜索区域 -->
       <a-form layout="inline" class="search-form">
+        <a-form-item label="区域">
+          <a-select v-model:value="areaFilter" style="width: 120px" placeholder="选择区域">
+            <a-select-option value="all">全部</a-select-option>
+            <a-select-option v-for="area in availableAreas" :key="area" :value="area">
+              {{ area }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+
         <a-form-item label="座位号">
           <a-input
             v-model:value="searchText"
             placeholder="请输入座位号"
             allow-clear
-            style="width: 180px"
+            style="width: 150px"
           >
             <template #prefix>
               <search-outlined />
@@ -65,23 +74,26 @@
 
         <!-- Grid View -->
         <div v-else-if="viewMode === 'grid'" class="seat-grid">
-          <a-row :gutter="[16, 16]">
-            <a-col :xs="12" :sm="8" :md="6" :lg="4" :xl="4" v-for="seat in filteredSeats" :key="seat.id">
-              <a-card hoverable class="seat-card" :class="seat.status">
-                <div class="seat-icon">
-                  <component :is="getSeatIcon(seat.status)" />
-                </div>
-                <div class="seat-info">
-                  <h3>{{ seat.seatNo }}</h3>
-                  <a-tag :color="getStatusColor(seat.status)">{{ getStatusText(seat.status) }}</a-tag>
-                </div>
-                <template #actions>
-                  <span v-if="seat.status === 'available'" @click="handleBook(seat)">预约</span>
-                  <span v-else style="cursor: not-allowed; color: #ccc">不可用</span>
-                </template>
-              </a-card>
-            </a-col>
-          </a-row>
+          <div v-for="(groupSeats, area) in groupedSeats" :key="area" class="area-section">
+            <h2 class="area-title">{{ area }}</h2>
+            <a-row :gutter="[16, 16]">
+              <a-col :xs="12" :sm="8" :md="6" :lg="4" :xl="4" v-for="seat in groupSeats" :key="seat.id">
+                <a-card hoverable class="seat-card" :class="seat.status">
+                  <div class="seat-icon">
+                    <component :is="getSeatIcon(seat.status)" />
+                  </div>
+                  <div class="seat-info">
+                    <h3>{{ seat.seatNo }}</h3>
+                    <a-tag :color="getStatusColor(seat.status)">{{ getStatusText(seat.status) }}</a-tag>
+                  </div>
+                  <template #actions>
+                    <span v-if="seat.status === 'available'" @click="handleBook(seat)">预约</span>
+                    <span v-else style="cursor: not-allowed; color: #ccc">不可用</span>
+                  </template>
+                </a-card>
+              </a-col>
+            </a-row>
+          </div>
         </div>
 
         <!-- List View -->
@@ -179,8 +191,15 @@ import SeatMap, { type Seat as MapSeat } from '../components/Seat/SeatMap.vue'
 
 const viewMode = ref('map')
 const searchText = ref('')
+const areaFilter = ref('all')
 const statusFilter = ref('all')
 const typeFilter = ref('all')
+
+const availableAreas = computed(() => {
+  const areas = new Set(seats.value.map(s => s.area))
+  return Array.from(areas).filter(Boolean).sort()
+})
+
 const isModalVisible = ref(false)
 const selectedSeat = ref<Seat | null>(null)
 const isMobile = ref(false)
@@ -219,7 +238,17 @@ const handleSeatUpdate = (data: { id: number, status: string }) => {
   }
 }
 
-onMounted(() => {
+const handleReservationUpdate = (data: { event: string, reason: string }) => {
+  if (data.event === 'reservation_ended') {
+    // 如果当前选中的座位正是被释放的那个，清除选中状态
+    if (selectedSeat.value && selectedSeat.value.status !== 'available') {
+      // 可以在这里做一些 UI 上的反馈
+    }
+  }
+}
+
+onMounted(async () => {
+  await userStore.syncReservationStatus()
   fetchSeats()
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -227,12 +256,14 @@ onMounted(() => {
   // 连接 WebSocket
   wsService.connect()
   wsService.on('seat_update', handleSeatUpdate)
+  wsService.on('reservation_update', handleReservationUpdate)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   wsService.off('seat_update', handleSeatUpdate)
-  wsService.disconnect()
+  wsService.off('reservation_update', handleReservationUpdate)
+  // Remove disconnect() here to prevent killing the global connection in SPA
 })
 
 const getStatusColor = (status: string) => {
@@ -263,16 +294,15 @@ const getSeatIcon = (status: string) => {
 }
 
 const mapSeats = computed<MapSeat[]>(() => {
-  return seats.value
-    .filter(seat => seat.id !== undefined) // 过滤掉 id 为 undefined 的座位
+  return filteredSeats.value
+    .filter(seat => seat.id !== undefined)
     .map((seat, index) => {
-      const row = Math.floor(index / 6)
-      const col = index % 6
+      // 这里的 x, y 是后端存储的真实坐标，如果不存在则按网格排列显示
       return {
-        id: seat.id!, // 断言 id 一定存在
+        id: seat.id!,
         label: seat.seatNo,
-        x: seat.x || 100 + col * 100,
-        y: seat.y || 100 + row * 80,
+        x: seat.x || 100 + (index % 6) * 100,
+        y: seat.y || 100 + Math.floor(index / 6) * 80,
         status: seat.status,
         type: 'normal'
       }
@@ -281,11 +311,22 @@ const mapSeats = computed<MapSeat[]>(() => {
 
 const filteredSeats = computed(() => {
   return seats.value.filter(seat => {
+    const matchArea = areaFilter.value === 'all' || seat.area === areaFilter.value
     const matchText = seat.seatNo.toLowerCase().includes(searchText.value.toLowerCase())
     const matchStatus = statusFilter.value === 'all' || seat.status === statusFilter.value
     const matchType = typeFilter.value === 'all' || seat.type === typeFilter.value
-    return matchText && matchStatus && matchType
+    return matchArea && matchText && matchStatus && matchType
   })
+})
+
+const groupedSeats = computed(() => {
+  const groups: Record<string, Seat[]> = {}
+  filteredSeats.value.forEach(seat => {
+    const area = seat.area || '其他'
+    if (!groups[area]) groups[area] = []
+    groups[area].push(seat)
+  })
+  return groups
 })
 
 const handleBook = (seat: Seat) => {
@@ -310,12 +351,14 @@ const onSearch = () => {
 
 const handleReset = () => {
   searchText.value = ''
+  areaFilter.value = 'all'
   statusFilter.value = 'all'
   typeFilter.value = 'all'
 }
 
 const columns = [
-  { title: '座位号', dataIndex: 'number', key: 'number' },
+  { title: '区域', dataIndex: 'area', key: 'area' },
+  { title: '座位号', dataIndex: 'seatNo', key: 'seatNo' },
   { title: '类型', dataIndex: 'type', key: 'type' },
   { title: '状态', dataIndex: 'status', key: 'status' },
   { title: '操作', key: 'action' }
@@ -356,14 +399,18 @@ const confirmBooking = async () => {
   bookingLoading.value = true
   try {
     if (selectedSeat.value) {
-      await createReservation({
+      const res = await createReservation({
         seatId: selectedSeat.value.id!,
         slot: bookingForm.slot
       })
       
+      const reservationId = (res as any).data || (res as any).id
+      
       selectedSeat.value.status = 'occupied'
       // 触发全局倒计时
-      userStore.setReservation(selectedSeat.value.id!, selectedSeat.value.seatNo)
+      if (reservationId) {
+        userStore.setReservation(reservationId, selectedSeat.value.id!, selectedSeat.value.seatNo)
+      }
       
       message.success(`预约成功！请在规定时间内签到。`)
       isModalVisible.value = false
@@ -381,16 +428,25 @@ const confirmBooking = async () => {
   padding: 24px;
 }
 
-.search-form {
-  margin-bottom: 24px;
-}
-
 .mt-4 {
   margin-top: 16px;
 }
 
 .seat-grid {
   margin-top: 16px;
+}
+
+.area-section {
+  margin-bottom: 32px;
+}
+
+.area-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  padding-left: 8px;
+  border-left: 4px solid var(--color-primary);
+  line-height: 1.2;
 }
 
 .seat-card {
@@ -415,18 +471,6 @@ const confirmBooking = async () => {
 .seat-info h3 {
   margin: 0 0 8px;
   font-size: 16px;
-}
-
-@media screen and (max-width: 576px) {
-  .search-form {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .search-form :deep(.ant-form-item) {
-    margin-right: 0;
-    margin-bottom: 12px;
-  }
 }
 
 .admin-actions {

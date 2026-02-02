@@ -9,6 +9,8 @@ import com.library.seat.modules.reservation.mapper.AppealMapper;
 import com.library.seat.modules.reservation.mapper.ReservationMapper;
 import com.library.seat.modules.seat.entity.Seat;
 import com.library.seat.modules.seat.service.SeatService;
+import com.library.seat.modules.sys.entity.SysUser;
+import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -36,12 +38,74 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    private void broadcastSeatUpdate(Long seatId, String status) {
-        Map<String, Object> message = new HashMap<>();
-        message.put("seatId", seatId);
-        message.put("status", status);
-        message.put("event", "seat_update");
-        messagingTemplate.convertAndSend("/topic/seats", message);
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private StatsService statsService;
+
+    @Autowired
+    private UserDetailsServiceImpl userDetailsService;
+
+    @Autowired
+    private com.library.seat.modules.sys.service.ISysNotificationService notificationService;
+
+    @Autowired
+    private com.library.seat.modules.sys.service.SysLogService sysLogService;
+
+    @Autowired
+    private com.library.seat.modules.sys.service.ISysConfigService configService;
+
+    public com.library.seat.modules.sys.service.ISysNotificationService getNotificationService() {
+        return notificationService;
+    }
+
+    public void broadcastReservationUpdate(Long userId, String event, String reason) {
+        broadcastReservationUpdate(userId, event, reason, true);
+    }
+
+    public void broadcastReservationUpdate(Long userId, String event, String reason, boolean includeStats) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("event", event);
+        payload.put("reason", reason);
+        payload.put("timestamp", new Date());
+
+        messagingTemplate.convertAndSendToUser(
+                String.valueOf(userId),
+                "/queue/reservation_update",
+                payload
+        );
+        
+        // 同时广播公共状态更新（用于消息广场实时刷新座位信息）
+        broadcastUserSeatStatus(userId);
+        
+        // 广播统计信息更新（用于首页实时刷新数据）
+        if (includeStats) {
+            statsService.broadcastStats();
+        }
+    }
+
+    public void broadcastUserSeatStatus(Long userId) {
+        SysUser user = userDetailsService.getById(userId);
+        if (user == null) return;
+
+        // 获取当前活跃预约
+        Reservation activeRes = this.getOne(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getUserId, userId)
+                .in(Reservation::getStatus, "reserved", "checked_in", "away")
+                .last("LIMIT 1"));
+
+        String seatNo = null;
+        if (activeRes != null) {
+            Seat seat = seatService.getById(activeRes.getSeatId());
+            if (seat != null) {
+                seatNo = seat.getSeatNo();
+            }
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("username", user.getUsername());
+        payload.put("seatNo", seatNo);
+        payload.put("event", "user_seat_change");
+        messagingTemplate.convertAndSend("/topic/user_seat_status", payload);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -55,6 +119,13 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         }
 
         try {
+            // 0. 检查用户信用分
+            int minScore = configService.getIntValue("min_credit_score", 60);
+            SysUser user = userDetailsService.getById(reservation.getUserId());
+            if (user != null && user.getCreditScore() < minScore) {
+                return Result.error("您的信用分低于 " + minScore + " 分，暂时无法预约。请通过申诉或联系管理员处理。");
+            }
+
             // 1. 检查座位是否存在且空闲
             Seat seat = seatService.getById(reservation.getSeatId());
             if (seat == null || !"available".equals(seat.getStatus())) {
@@ -133,17 +204,26 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
                 reservation.setEndTime(new Date(reservation.getStartTime().getTime() + 4 * 60 * 60 * 1000));
             }
 
-            // 设置签到截止时间: start_time + 15分钟 (Previously was now + 15m, but should be relative to start time)
-            // But if it's an immediate reservation (start now), then now + 15m is correct.
-            // If it's a future slot, deadline should be around start time.
-            // Let's use start_time + 15m for deadline.
-            reservation.setDeadline(new Date(reservation.getStartTime().getTime() + 15 * 60 * 1000));
+            // 设置签到截止时间: start_time + 配置分钟数
+            int violationTime = configService.getIntValue("violation_time", 30);
+            reservation.setDeadline(new Date(reservation.getStartTime().getTime() + (long) violationTime * 60 * 1000));
             reservation.setCreateTime(now);
             this.save(reservation);
 
             // 4. 更新座位状态
             seat.setStatus("occupied");
             seatService.updateById(seat);
+
+            // 5. 广播更新
+            broadcastReservationUpdate(reservation.getUserId(), "reservation_success", "预约成功");
+            seatService.broadcastSeatUpdate(seat.getId(), "occupied");
+            statsService.broadcastStats();
+
+            // 6. 发送通知
+            notificationService.send(reservation.getUserId(), "预约成功", "您已成功预约座位 " + seat.getSeatNo() + "，请在规定时间内签到。", "success");
+
+            // 7. 记录日志
+            sysLogService.log(user.getUsername(), "预约座位", "预约座位号: " + seat.getSeatNo());
 
             return Result.success(true);
         } finally {
@@ -173,7 +253,17 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         reservation.setDeadline(null); // 清除截止时间
         this.updateById(reservation);
         
-        broadcastSeatUpdate(reservation.getSeatId(), "occupied");
+        seatService.broadcastSeatUpdate(reservation.getSeatId(), "occupied");
+
+        // 发送通知
+        notificationService.send(userId, "签到成功", "您已成功签到，祝您学习愉快！", "success");
+
+        // 记录日志
+        SysUser user = userDetailsService.getById(userId);
+        Seat seat = seatService.getById(reservation.getSeatId());
+        if (user != null && seat != null) {
+            sysLogService.log(user.getUsername(), "座位签到", "座位号: " + seat.getSeatNo());
+        }
 
         return Result.success(true);
     }
@@ -194,8 +284,9 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         reservation.setStatus("away");
         // Update updateTime to track when leave started
         reservation.setUpdateTime(new Date());
-        // 设置暂离返回截止时间: 当前时间 + 30分钟
-        reservation.setDeadline(new Date(System.currentTimeMillis() + 30 * 60 * 1000));
+        // 设置暂离返回截止时间: 当前时间 + 配置分钟数
+        int violationTime = configService.getIntValue("violation_time", 30);
+        reservation.setDeadline(new Date(System.currentTimeMillis() + (long) violationTime * 60 * 1000));
         this.updateById(reservation);
 
         return Result.success(true);
@@ -224,16 +315,80 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         if (seat != null) {
             seat.setStatus("available");
             seatService.updateById(seat);
-            broadcastSeatUpdate(seat.getId(), "available");
+            seatService.broadcastSeatUpdate(seat.getId(), "available");
+        }
+
+        // 履约奖励: +2 信用分
+        userDetailsService.addCreditScore(userId, 2);
+
+        // 发送通知
+        notificationService.send(userId, "取消预约成功", "您的预约已取消，座位已释放。", "info");
+
+        // 记录日志
+        SysUser user = userDetailsService.getById(userId);
+        if (user != null && seat != null) {
+            String op = "取消预约";
+            if ("checked_in".equals(reservation.getStatus()) || "away".equals(reservation.getStatus())) {
+                op = "释放座位";
+            }
+            sysLogService.log(user.getUsername(), op, "座位号: " + seat.getSeatNo());
         }
 
         return Result.success(true);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void terminateActiveReservationBySeat(Long seatId, String reason) {
+        terminateActiveReservationBySeat(seatId, reason, true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void terminateActiveReservationBySeat(Long seatId, String reason, boolean includeStats) {
+        // 查找该座位下的活跃预约 (reserved, checked_in, away)
+        Reservation reservation = this.getOne(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getSeatId, seatId)
+                .in(Reservation::getStatus, "reserved", "checked_in", "away")
+                .last("LIMIT 1"));
+
+        if (reservation != null) {
+            reservation.setStatus("completed");
+            reservation.setEndTime(new Date());
+            this.updateById(reservation);
+            
+            // 通知学生预约已结束
+            broadcastReservationUpdate(reservation.getUserId(), "reservation_ended", reason, includeStats);
+
+            // 发送系统通知
+            notificationService.send(reservation.getUserId(), "预约被取消", "您预约的座位已被管理员取消，原因: " + reason, "warning");
+        }
+    }
+
     public Result<List<Reservation>> getMyHistory(Long userId) {
-        return Result.success(this.list(new LambdaQueryWrapper<Reservation>()
+        List<Reservation> list = this.list(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getUserId, userId)
-                .orderByDesc(Reservation::getCreateTime)));
+                .orderByDesc(Reservation::getCreateTime));
+        
+        // 补全座位号
+        for (Reservation res : list) {
+            Seat seat = seatService.getById(res.getSeatId());
+            if (seat != null) res.setSeatNo(seat.getSeatNo());
+        }
+        
+        return Result.success(list);
+    }
+
+    public Result<Reservation> getActiveReservation(Long userId) {
+        Reservation res = this.getOne(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getUserId, userId)
+                .in(Reservation::getStatus, "reserved", "checked_in", "away")
+                .last("LIMIT 1"));
+        
+        if (res != null) {
+            Seat seat = seatService.getById(res.getSeatId());
+            if (seat != null) res.setSeatNo(seat.getSeatNo());
+        }
+        
+        return Result.success(res);
     }
     
     public Result<Boolean> appeal(Appeal appeal) {
@@ -263,8 +418,18 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         if (seat != null) {
             seat.setStatus("available");
             seatService.updateById(seat);
-            broadcastSeatUpdate(seat.getId(), "available");
+            seatService.broadcastSeatUpdate(seat.getId(), "available");
         }
+
+        // 通知学生预约已结束 (解决前端卡顿)
+        broadcastReservationUpdate(reservation.getUserId(), "reservation_ended", "admin_force_release");
+
+        // 发送系统通知
+        notificationService.send(reservation.getUserId(), "预约被取消", "您预约的座位已被管理员取消。", "warning");
+
+        // 记录日志
+        String adminUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        sysLogService.log(adminUsername, "强制释放座位", "座位号: " + seat.getSeatNo() + ", 原用户: " + reservation.getUserId());
 
         return Result.success(true);
     }

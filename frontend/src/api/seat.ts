@@ -100,3 +100,13 @@ export function batchImportSeats(seats: Partial<Seat>[]) {
     data: seats
   })
 }
+
+export function deleteAllSeats() {
+  if (USE_MOCK) {
+    return Promise.resolve(true)
+  }
+  return request<boolean>({
+    url: '/seats/all',
+    method: 'delete'
+  })
+}

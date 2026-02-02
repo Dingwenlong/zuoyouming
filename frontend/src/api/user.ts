@@ -67,7 +67,7 @@ export function getUsers(params?: any) {
     return Promise.resolve(mockUsers)
   }
   return request<PageResult<UserManage>>({
-    url: '/users',
+    url: '/users/list',
     method: 'get',
     params
   })

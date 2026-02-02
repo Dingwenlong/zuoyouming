@@ -33,11 +33,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ClockCircleOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '../../stores/user'
 import { message } from 'ant-design-vue'
+import { checkIn, temporaryLeave, releaseSeat } from '../../api/reservation'
 
 const userStore = useUserStore()
 const reservation = computed(() => userStore.reservation)
 const timeLeft = ref(0)
 const isMobile = ref(false)
+const loading = ref(false)
 let timer: number | null = null
 
 const formatTime = (ms: number) => {
@@ -62,26 +64,53 @@ const updateTimer = () => {
 
   if (diff <= 0) {
     timeLeft.value = 0
-    userStore.clearReservation()
-    message.warning('时间已到，座位自动释放')
+    // Don't auto clear here, wait for backend push or manual refresh to avoid race conditions
+    // userStore.clearReservation() 
   } else {
     timeLeft.value = diff
   }
 }
 
-const handleCheckIn = () => {
-  userStore.checkIn()
-  message.success('签到成功')
+const handleCheckIn = async () => {
+  if (!reservation.value?.id) return
+  loading.value = true
+  try {
+    await checkIn(reservation.value.id)
+    userStore.checkIn()
+    message.success('签到成功')
+  } catch (e) {
+    // message.error('签到失败') // Interceptor already handles error
+  } finally {
+    loading.value = false
+  }
 }
 
-const handleLeave = () => {
-  userStore.setAway()
-  message.success('已设置为暂离状态，请在30分钟内返回')
+const handleLeave = async () => {
+  if (!reservation.value?.id) return
+  loading.value = true
+  try {
+    await temporaryLeave(reservation.value.id)
+    userStore.setAway()
+    message.success('已设置为暂离状态，请在30分钟内返回')
+  } catch (e) {
+    // message.error('操作失败')
+  } finally {
+    loading.value = false
+  }
 }
 
-const handleRelease = () => {
-  userStore.clearReservation()
-  message.success('已主动释放座位')
+const handleRelease = async () => {
+  if (!reservation.value?.id) return
+  loading.value = true
+  try {
+    await releaseSeat(reservation.value.id)
+    userStore.clearReservation()
+    message.success('已主动释放座位')
+  } catch (e) {
+    // message.error('操作失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {

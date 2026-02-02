@@ -83,6 +83,12 @@ public class ReservationController {
         return reservationService.getMyHistory(getCurrentUserId());
     }
 
+    @Operation(summary = "获取当前用户的活跃预约")
+    @GetMapping("/active")
+    public Result<Reservation> getActive() {
+        return reservationService.getActiveReservation(getCurrentUserId());
+    }
+
     @Operation(summary = "提交违规申诉")
     @PostMapping("/{id}/appeal")
     public Result<Boolean> appeal(@PathVariable Long id, @RequestBody Appeal appeal) {

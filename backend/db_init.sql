@@ -106,3 +106,30 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `name`, `path`, `title`, `icon`, `rol
 (1, 0, 'dashboard', '/dashboard', '首页', 'ep:house', '["student","admin","librarian"]', 1),
 (2, 0, 'seat', '/seat', '座位预约', 'ep:reading', '["student","admin","librarian"]', 2),
 (3, 0, 'seatManage', '/system/seat', '座位管理', 'ep:management', '["admin","librarian"]', 3);
+
+-- 1.7 消息广场表
+CREATE TABLE IF NOT EXISTS `sys_message` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '发布人ID',
+  `content` text NOT NULL COMMENT '消息内容',
+  `at_user_id` bigint(20) DEFAULT NULL COMMENT '被@人ID',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_at_user_id` (`at_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息广场表';
+
+-- 1.8 消息通知表
+CREATE TABLE IF NOT EXISTS `sys_notification` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '接收人ID',
+  `title` varchar(100) NOT NULL COMMENT '通知标题',
+  `content` text NOT NULL COMMENT '通知内容',
+  `type` varchar(20) DEFAULT 'info' COMMENT '类型: info, success, warning, error',
+  `is_read` int(11) DEFAULT '0' COMMENT '是否已读 0:否 1:是',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '通知时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息通知表';

@@ -28,7 +28,9 @@ import {
   BarChartOutlined,
   SettingOutlined,
   FileTextOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  CommentOutlined,
+  ProjectOutlined
 } from '@ant-design/icons-vue'
 import type { MenuItem } from '../../../api/menu'
 
@@ -43,7 +45,9 @@ const iconMap: Record<string, any> = {
   BarChartOutlined,
   SettingOutlined,
   FileTextOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  CommentOutlined,
+  ProjectOutlined
 }
 </script>
 

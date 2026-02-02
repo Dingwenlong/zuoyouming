@@ -15,6 +15,8 @@
     <description>Library Seat Management System</description>
     <properties>
         <java.version>1.8</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
         <druid.version>1.2.16</druid.version>
         <jjwt.version>0.9.1</jjwt.version>

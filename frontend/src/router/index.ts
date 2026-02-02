@@ -28,6 +28,12 @@ const routes: Array<RouteRecordRaw> = [
         meta: { title: '座位签到', roles: ['student', 'librarian', 'admin'] }
       },
       {
+        path: 'square',
+        name: 'Square',
+        component: () => import('../views/Square/MessageSquare.vue'),
+        meta: { title: '消息广场', roles: ['student', 'librarian', 'admin', 'guest'] }
+      },
+      {
         path: 'profile',
         name: 'Profile',
         redirect: '/profile/info',
@@ -76,6 +82,12 @@ const routes: Array<RouteRecordRaw> = [
             name: 'SystemLog',
             component: () => import('../views/System/Log.vue'),
             meta: { title: '系统日志', roles: ['admin'] }
+          },
+          {
+            path: 'config',
+            name: 'SystemConfig',
+            component: () => import('../views/System/Config.vue'),
+            meta: { title: '系统配置', roles: ['admin'] }
           }
         ]
       }

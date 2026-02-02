@@ -68,6 +68,14 @@ export function getMyHistory() {
   })
 }
 
+export function getActiveReservation() {
+  if (USE_MOCK) return Promise.resolve(null)
+  return request<any>({
+    url: '/reservations/active',
+    method: 'get'
+  })
+}
+
 export function submitAppeal(id: number, data: { reason: string, images?: string[] }) {
   if (USE_MOCK) {
     return new Promise((resolve) => setTimeout(resolve, 1000))

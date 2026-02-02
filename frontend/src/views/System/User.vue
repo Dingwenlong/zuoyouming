@@ -9,19 +9,21 @@
       </template>
 
       <!-- 搜索栏 -->
-      <a-form layout="inline" class="search-form">
+      <a-form layout="inline" :model="searchForm" class="search-form">
         <a-form-item label="用户名">
           <a-input v-model:value="searchForm.username" placeholder="请输入用户名" allow-clear />
         </a-form-item>
-        <a-form-item label="状态">
-          <a-select v-model:value="searchForm.status" placeholder="请选择状态" style="width: 120px" allow-clear>
-            <a-select-option value="active">正常</a-select-option>
-            <a-select-option value="banned">封禁</a-select-option>
-          </a-select>
+        <a-form-item label="姓名">
+          <a-input v-model:value="searchForm.realName" placeholder="请输入姓名" allow-clear />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">查询</a-button>
-          <a-button style="margin-left: 8px" @click="resetSearch">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch">
+              <template #icon><search-outlined /></template>
+              查询
+            </a-button>
+            <a-button @click="resetSearch">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
 
@@ -110,7 +112,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { getUsers, createUser, updateUser, updateUserStatus, type UserManage } from '../../api/user'
 
@@ -118,7 +120,7 @@ const loading = ref(false)
 const users = ref<UserManage[]>([])
 const searchForm = reactive({
   username: '',
-  status: undefined as string | undefined
+  realName: ''
 })
 
 const columns = [
@@ -154,9 +156,9 @@ const fetchData = async () => {
 // 前端搜索过滤
 const filteredUsers = computed(() => {
   return users.value.filter(user => {
-    const matchName = !searchForm.username || user.username.includes(searchForm.username)
-    const matchStatus = !searchForm.status || user.status === searchForm.status
-    return matchName && matchStatus
+    const matchUsername = !searchForm.username || user.username.includes(searchForm.username)
+    const matchRealName = !searchForm.realName || user.realName.includes(searchForm.realName)
+    return matchUsername && matchRealName
   })
 })
 
@@ -166,7 +168,7 @@ const handleSearch = () => {
 
 const resetSearch = () => {
   searchForm.username = ''
-  searchForm.status = undefined
+  searchForm.realName = ''
 }
 
 // 角色样式
@@ -250,9 +252,6 @@ onMounted(() => {
 <style scoped>
 .page-container {
   padding: 24px;
-}
-.search-form {
-  margin-bottom: 16px;
 }
 .mt-4 {
   margin-top: 16px;

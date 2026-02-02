@@ -34,3 +34,17 @@ export function getHeatmapData() {
     method: 'get'
   })
 }
+
+export function getCongestionData() {
+  return request({
+    url: '/stats/congestion',
+    method: 'get'
+  })
+}
+
+export function getViolationTrend() {
+  return request({
+    url: '/stats/violation-trend',
+    method: 'get'
+  })
+}
