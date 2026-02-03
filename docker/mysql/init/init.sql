@@ -1,4 +1,4 @@
-CREATE DATABASE IF NOT EXISTS library_seat DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE DATABASE IF NOT EXISTS library_seat DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE library_seat;
 
@@ -95,21 +95,72 @@ CREATE TABLE `sys_appeal` (
 DROP TABLE IF EXISTS `sys_log`;
 CREATE TABLE `sys_log` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `username` varchar(50) DEFAULT NULL COMMENT '操作人账号',
-  `operation` varchar(100) DEFAULT NULL COMMENT '操作类型',
-  `content` text DEFAULT NULL COMMENT '操作内容',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`)
+  `username` varchar(50) NOT NULL COMMENT '操作人账号',
+  `operation` varchar(50) NOT NULL COMMENT '操作类型 (如 新增座位, 删除座位)',
+  `content` text DEFAULT NULL COMMENT '操作内容详情',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统日志表';
+
+-- ----------------------------
+-- Table structure for sys_menu
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_menu`;
+CREATE TABLE `sys_menu` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `parent_id` bigint(20) DEFAULT '0' COMMENT '父菜单ID',
+  `name` varchar(50) DEFAULT NULL COMMENT '菜单名称',
+  `path` varchar(100) DEFAULT NULL COMMENT '路由路径',
+  `title` varchar(50) DEFAULT NULL COMMENT '菜单标题',
+  `icon` varchar(50) DEFAULT NULL COMMENT '图标',
+  `roles` varchar(255) DEFAULT NULL COMMENT '权限角色JSON',
+  `sort_order` int(11) DEFAULT '0' COMMENT '排序',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统菜单表';
+
+-- ----------------------------
+-- Table structure for sys_message
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_message`;
+CREATE TABLE `sys_message` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '发布人ID',
+  `content` text NOT NULL COMMENT '消息内容',
+  `at_user_id` bigint(20) DEFAULT NULL COMMENT '被@人ID',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_at_user_id` (`at_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息广场表';
+
+-- ----------------------------
+-- Table structure for sys_notification
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_notification`;
+CREATE TABLE `sys_notification` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '接收人ID',
+  `title` varchar(100) NOT NULL COMMENT '通知标题',
+  `content` text NOT NULL COMMENT '通知内容',
+  `type` varchar(20) DEFAULT 'info' COMMENT '类型: info, success, warning, error',
+  `is_read` int(11) DEFAULT '0' COMMENT '是否已读 0:否 1:是',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '通知时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息通知表';
 
 -- ----------------------------
 -- Records of sys_user
 -- ----------------------------
 -- password: 123456
 INSERT INTO `sys_user` (`id`, `username`, `password`, `real_name`, `role`, `status`, `credit_score`) VALUES 
-(1, 'admin', '$2a$10$/DicGv2VwwNohvyU2O29k.9fsie0WBUfmaw6oPUYB4lZnSsY/Rb4q', '管理员', 'admin', 'active', 100),
-(2, 'lib', '$2a$10$/DicGv2VwwNohvyU2O29k.9fsie0WBUfmaw6oPUYB4lZnSsY/Rb4q', '图书馆员', 'librarian', 'active', 100),
-(3, 'student', '$2a$10$/DicGv2VwwNohvyU2O29k.9fsie0WBUfmaw6oPUYB4lZnSsY/Rb4q', '学生', 'student', 'active', 100);
+(1, 'admin', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '管理员', 'admin', 'active', 100),
+(2, 'lib', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '图书馆员', 'librarian', 'active', 100),
+(3, 'student', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '学生', 'student', 'active', 100);
 
 -- ----------------------------
 -- Records of sys_seat (Initial Test Data)
@@ -120,5 +171,13 @@ INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord
 ('A-03', 'A区', '插座', 'available', 300, 100),
 ('B-01', 'B区', '靠窗', 'available', 100, 200),
 ('B-02', 'B区', '标准', 'available', 200, 200);
+
+-- ----------------------------
+-- Records of sys_menu
+-- ----------------------------
+INSERT INTO `sys_menu` (`id`, `parent_id`, `name`, `path`, `title`, `icon`, `roles`, `sort_order`) VALUES
+(1, 0, 'dashboard', '/dashboard', '首页', 'ep:house', '["student","admin","librarian"]', 1),
+(2, 0, 'seat', '/seat', '座位预约', 'ep:reading', '["student","admin","librarian"]', 2),
+(3, 0, 'seatManage', '/system/seat', '座位管理', 'ep:management', '["admin","librarian"]', 3);
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -1,3 +1,11 @@
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS library_seat CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE library_seat;
+
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- 1.1 用户表
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -17,7 +25,13 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
   UNIQUE KEY `uk_open_id` (`open_id`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
+
+-- 初始用户账号 (密码: 123456)
+INSERT INTO `sys_user` (`id`, `username`, `password`, `real_name`, `role`, `status`, `credit_score`) VALUES 
+(1, 'admin', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '管理员', 'admin', 'active', 100),
+(2, 'lib', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '图书馆员', 'librarian', 'active', 100),
+(3, 'student', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '学生', 'student', 'active', 100);
 
 -- 1.2 座位表
 CREATE TABLE IF NOT EXISTS `sys_seat` (
@@ -33,7 +47,15 @@ CREATE TABLE IF NOT EXISTS `sys_seat` (
   `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_seat_no` (`seat_no`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='座位表';
+
+-- 初始座位数据
+INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES 
+('A-01', 'A区', '靠窗', 'available', 100, 100),
+('A-02', 'A区', '标准', 'available', 200, 100),
+('A-03', 'A区', '插座', 'available', 300, 100),
+('B-01', 'B区', '靠窗', 'available', 100, 200),
+('B-02', 'B区', '标准', 'available', 200, 200);
 
 -- 1.3 预约记录表
 CREATE TABLE IF NOT EXISTS `sys_reservation` (
@@ -45,21 +67,15 @@ CREATE TABLE IF NOT EXISTS `sys_reservation` (
   `deadline` datetime DEFAULT NULL COMMENT '签到/暂离截止时间',
   `status` varchar(20) DEFAULT 'reserved' COMMENT 'reserved, checked_in, completed, cancelled, violation',
   `type` varchar(20) DEFAULT 'appointment' COMMENT '类型: appointment, immediate',
+  `reservation_date` date DEFAULT NULL COMMENT '预约日期',
+  `slot` varchar(20) DEFAULT NULL COMMENT '时段: morning, afternoon, evening',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
-  PRIMARY KEY (`id`)
-);
-
--- 1.6 系统日志表
-CREATE TABLE IF NOT EXISTS `sys_log` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `username` varchar(50) DEFAULT NULL COMMENT '操作人账号',
-  `operation` varchar(100) DEFAULT NULL COMMENT '操作类型',
-  `content` text DEFAULT NULL COMMENT '操作内容',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`)
-);
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_seat_id` (`seat_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='预约记录表';
 
 -- 1.4 违规申诉表
 CREATE TABLE IF NOT EXISTS `sys_appeal` (
@@ -72,10 +88,22 @@ CREATE TABLE IF NOT EXISTS `sys_appeal` (
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
-  PRIMARY KEY (`id`)
-);
+  PRIMARY KEY (`id`),
+  KEY `idx_reservation_id` (`reservation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='违规申诉表';
 
--- 1.5 系统菜单表 (Optional, but needed for UserController)
+-- 1.5 操作日志表
+CREATE TABLE IF NOT EXISTS `sys_log` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `username` varchar(50) NOT NULL COMMENT '操作人账号',
+  `operation` varchar(50) NOT NULL COMMENT '操作类型 (如 新增座位, 删除座位)',
+  `content` text DEFAULT NULL COMMENT '操作内容详情',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
+
+-- 1.6 菜单表
 CREATE TABLE IF NOT EXISTS `sys_menu` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `parent_id` bigint(20) DEFAULT '0' COMMENT '父菜单ID',
@@ -87,4 +115,39 @@ CREATE TABLE IF NOT EXISTS `sys_menu` (
   `sort_order` int(11) DEFAULT '0' COMMENT '排序',
   `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
   PRIMARY KEY (`id`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统菜单表';
+
+-- 初始菜单数据
+INSERT INTO `sys_menu` (`id`, `parent_id`, `name`, `path`, `title`, `icon`, `roles`, `sort_order`) VALUES
+(1, 0, 'dashboard', '/dashboard', '首页', 'ep:house', '["student","admin","librarian"]', 1),
+(2, 0, 'seat', '/seat', '座位预约', 'ep:reading', '["student","admin","librarian"]', 2),
+(3, 0, 'seatManage', '/system/seat', '座位管理', 'ep:management', '["admin","librarian"]', 3);
+
+-- 1.7 消息广场表
+CREATE TABLE IF NOT EXISTS `sys_message` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '发布人ID',
+  `content` text NOT NULL COMMENT '消息内容',
+  `at_user_id` bigint(20) DEFAULT NULL COMMENT '被@人ID',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_at_user_id` (`at_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息广场表';
+
+-- 1.8 消息通知表
+CREATE TABLE IF NOT EXISTS `sys_notification` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '接收人ID',
+  `title` varchar(100) NOT NULL COMMENT '通知标题',
+  `content` text NOT NULL COMMENT '通知内容',
+  `type` varchar(20) DEFAULT 'info' COMMENT '类型: info, success, warning, error',
+  `is_read` int(11) DEFAULT '0' COMMENT '是否已读 0:否 1:是',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '通知时间',
+  `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息通知表';
+
+SET FOREIGN_KEY_CHECKS = 1;

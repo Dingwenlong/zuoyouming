@@ -15,7 +15,7 @@
         <div class="logo-box">
           <img src="/vite.svg" alt="logo" />
         </div>
-        <h1 v-show="!collapsed" class="logo-text">座位预约系统</h1>
+        <h1 v-show="!collapsed" class="logo-text">座位预约与占座监督</h1>
       </div>
       
       <div class="menu-container">
@@ -46,7 +46,7 @@
         <div class="logo-box">
           <img src="/vite.svg" alt="logo" />
         </div>
-        <h1 class="logo-text">座位预约系统</h1>
+        <h1 class="logo-text">座位预约与占座监督</h1>
       </div>
       <div class="menu-container">
         <a-menu

@@ -1,6 +1,7 @@
 package com.library.seat;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -11,11 +12,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-@Slf4j
 @SpringBootApplication
 @MapperScan("com.library.seat.modules.*.mapper")
 @EnableScheduling
 public class LibrarySeatApplication {
+
+    private static final Logger log = LoggerFactory.getLogger(LibrarySeatApplication.class);
 
     public static void main(String[] args) throws UnknownHostException {
         ConfigurableApplicationContext application = SpringApplication.run(LibrarySeatApplication.class, args);

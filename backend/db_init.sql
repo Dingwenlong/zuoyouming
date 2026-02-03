@@ -3,6 +3,9 @@ CREATE DATABASE IF NOT EXISTS library_seat CHARACTER SET utf8mb4 COLLATE utf8mb4
 
 USE library_seat;
 
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- 1.1 用户表
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -24,8 +27,11 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   UNIQUE KEY `uk_open_id` (`open_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 初始管理员账号 (密码: 123456)
-INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`, `status`) VALUES ('admin', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '管理员', 'admin', 'active');
+-- 初始用户账号 (密码: 123456)
+INSERT INTO `sys_user` (`id`, `username`, `password`, `real_name`, `role`, `status`, `credit_score`) VALUES 
+(1, 'admin', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '管理员', 'admin', 'active', 100),
+(2, 'lib', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '图书馆员', 'librarian', 'active', 100),
+(3, 'student', '$2a$10$7JB720yubVSZv5W8vNGkarOu8wO0QRYJGW.u/y/m1/s.p.q.r.s', '学生', 'student', 'active', 100);
 
 -- 1.2 座位表
 CREATE TABLE IF NOT EXISTS `sys_seat` (
@@ -43,6 +49,14 @@ CREATE TABLE IF NOT EXISTS `sys_seat` (
   UNIQUE KEY `uk_seat_no` (`seat_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='座位表';
 
+-- 初始座位数据
+INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES 
+('A-01', 'A区', '靠窗', 'available', 100, 100),
+('A-02', 'A区', '标准', 'available', 200, 100),
+('A-03', 'A区', '插座', 'available', 300, 100),
+('B-01', 'B区', '靠窗', 'available', 100, 200),
+('B-02', 'B区', '标准', 'available', 200, 200);
+
 -- 1.3 预约记录表
 CREATE TABLE IF NOT EXISTS `sys_reservation` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -53,6 +67,8 @@ CREATE TABLE IF NOT EXISTS `sys_reservation` (
   `deadline` datetime DEFAULT NULL COMMENT '签到/暂离截止时间',
   `status` varchar(20) DEFAULT 'reserved' COMMENT 'reserved, checked_in, completed, cancelled, violation',
   `type` varchar(20) DEFAULT 'appointment' COMMENT '类型: appointment, immediate',
+  `reservation_date` date DEFAULT NULL COMMENT '预约日期',
+  `slot` varchar(20) DEFAULT NULL COMMENT '时段: morning, afternoon, evening',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` int(11) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
@@ -133,3 +149,5 @@ CREATE TABLE IF NOT EXISTS `sys_notification` (
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息通知表';
+
+SET FOREIGN_KEY_CHECKS = 1;

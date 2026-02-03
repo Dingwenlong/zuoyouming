@@ -6,7 +6,8 @@ import com.library.seat.modules.reservation.service.ReservationService;
 import com.library.seat.modules.seat.entity.Seat;
 import com.library.seat.modules.seat.service.SeatService;
 import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,19 +21,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Component
 public class ReservationJob {
+
+    private static final Logger log = LoggerFactory.getLogger(ReservationJob.class);
 
     @Autowired
     private ReservationService reservationService;
 
     @Autowired
     private SeatService seatService;
-    
+
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
-    
+
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
@@ -56,10 +58,10 @@ public class ReservationJob {
     @Transactional(rollbackFor = Exception.class)
     public void checkViolation() {
         log.info("Executing Violation Check Job...");
-        
+
         Date now = new Date();
         Date soon = new Date(System.currentTimeMillis() + 5 * 60 * 1000); // 5 mins later
-        
+
         // 1. Check 15-min no-show (reserved -> violation)
         List<Reservation> noShows = reservationService.list(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getStatus, "reserved")
@@ -68,7 +70,7 @@ public class ReservationJob {
         for (Reservation res : noShows) {
             handleViolation(res, "No-show violation");
         }
-        
+
         // 2. Check 30-min away (away -> violation)
         List<Reservation> timeOuts = reservationService.list(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getStatus, "away")
@@ -85,16 +87,16 @@ public class ReservationJob {
                 .lt(Reservation::getDeadline, soon));
 
         for (Reservation res : soonToExpire) {
-            String msg = res.getStatus().equals("reserved") ? 
-                "您的预约即将在5分钟内过期，请尽快签到！" : 
+            String msg = res.getStatus().equals("reserved") ?
+                "您的预约即将在5分钟内过期，请尽快签到！" :
                 "您的暂离时间即将在5分钟内过期，请尽快返回签到！";
             sendUserAlert(res.getUserId(), msg);
         }
     }
-    
+
     private void handleViolation(Reservation res, String reason) {
         log.info("Violation found: id={}, reason={}", res.getId(), reason);
-        
+
         // Mark as violation
         res.setStatus("violation");
         reservationService.updateById(res);
@@ -106,10 +108,10 @@ public class ReservationJob {
             seatService.updateById(seat);
             seatService.broadcastSeatUpdate(seat.getId(), "available");
         }
-        
+
         // Deduct credit score (-10)
         userDetailsService.deductCreditScore(res.getUserId(), 10);
-        
+
         // Notify user via alert
         sendUserAlert(res.getUserId(), "您的预约因违规已取消: " + reason);
 
@@ -133,17 +135,17 @@ public class ReservationJob {
     @Transactional(rollbackFor = Exception.class)
     public void checkExpiration() {
         log.info("Executing Expiration Check Job...");
-        
+
         Date now = new Date();
 
         // Find checked_in reservations that have ended
         List<Reservation> expired = reservationService.list(new LambdaQueryWrapper<Reservation>()
-                .eq(Reservation::getStatus, "checked_in") 
+                .eq(Reservation::getStatus, "checked_in")
                 .lt(Reservation::getEndTime, now));
 
         for (Reservation res : expired) {
             log.info("Expiration found: reservationId={}", res.getId());
-            
+
             // Mark completed
             res.setStatus("completed");
             reservationService.updateById(res);

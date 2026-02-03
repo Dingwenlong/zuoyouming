@@ -8,7 +8,6 @@ import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,7 +17,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.util.HashMap;
@@ -35,7 +34,7 @@ public class AuthController {
 
     @Autowired
     private JwtUtils jwtUtils;
-    
+
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
 
@@ -71,14 +70,14 @@ public class AuthController {
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
         data.put("userInfo", sysUser);
-        
+
         return Result.success(data);
     }
-    
+
     @Operation(summary = "退出登录")
     @PostMapping("/logout")
     public Result<String> logout() {
-        // JWT is stateless, client just discards token. 
+        // JWT is stateless, client just discards token.
         // Can implement blacklist if needed.
         return Result.success("Logged out successfully");
     }
@@ -101,21 +100,21 @@ public class AuthController {
         // 2. Find user by openid (need to add openid to SysUser or separate table)
         // 3. If not found, auto-register or return error
         // 4. Generate JWT
-        
+
         // Mocking a successful login for 'student'
         // In real impl, use request.getCode()
-        
-        String mockUsername = "student"; 
+
+        String mockUsername = "student";
         UserDetails userDetails = userDetailsService.loadUserByUsername(mockUsername);
         String token = jwtUtils.generateToken(userDetails);
-        
+
         SysUser sysUser = userDetailsService.getOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, mockUsername));
-        
+
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
         data.put("userInfo", sysUser);
-        
+
         return Result.success(data);
     }
 
@@ -131,10 +130,10 @@ public class AuthController {
                 "https://api.weixin.qq.com/sns/oauth2/access_token?appid=%s&secret=%s&code=%s&grant_type=authorization_code",
                 wechatAppId, wechatAppSecret, request.getCode()
         );
-        
+
         String tokenResponse = restTemplate.getForObject(tokenUrl, String.class);
         JSONObject tokenJson = JSONObject.parseObject(tokenResponse);
-        
+
         if (tokenJson.containsKey("errcode")) {
             return Result.error("WeChat Auth Failed: " + tokenJson.getString("errmsg"));
         }
@@ -162,14 +161,14 @@ public class AuthController {
             sysUser.setPassword(passwordEncoder.encode("123456")); // Default password
             sysUser.setRole("student");
             sysUser.setStatus("active");
-            
+
             if (!userInfoJson.containsKey("errcode")) {
                 sysUser.setRealName(userInfoJson.getString("nickname"));
                 sysUser.setAvatar(userInfoJson.getString("headimgurl"));
             } else {
                 sysUser.setRealName("WeChat User");
             }
-            
+
             userDetailsService.save(sysUser);
         }
 
@@ -217,13 +216,13 @@ public class AuthController {
         user.setDeleted(0);
         // Default avatar
         user.setAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=" + request.getUsername());
-        
+
         userDetailsService.save(user);
 
         // 4. Auto login (Generate Token)
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
         String token = jwtUtils.generateToken(userDetails);
-        
+
         // Update last login
         user.setLastLoginTime(new java.util.Date());
         userDetailsService.updateById(user);
@@ -235,17 +234,31 @@ public class AuthController {
         return Result.success(data);
     }
 
-    @Data
     @Schema(description = "登录请求参数")
     public static class LoginRequest {
         @Schema(description = "账号", example = "admin", required = true)
         private String username;
-        
+
         @Schema(description = "密码", example = "123456", required = true)
         private String password;
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
     }
 
-    @Data
     @Schema(description = "注册请求参数")
     public static class RegisterRequest {
         @Schema(description = "账号", example = "2021001", required = true)
@@ -253,10 +266,33 @@ public class AuthController {
 
         @Schema(description = "密码", example = "password123", required = true)
         private String password;
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
     }
-    
-    @Data
+
     public static class WechatLoginRequest {
         private String code;
+
+        public String getCode() {
+            return code;
+        }
+
+        public void setCode(String code) {
+            this.code = code;
+        }
     }
 }

@@ -13,12 +13,12 @@
             <div class="logo-container">
               <img src="/vite.svg" alt="logo" class="brand-logo" />
             </div>
-            <h1 class="brand-title">图书馆座位预约</h1>
+            <h1 class="brand-title">图书馆座位预约与占座监督系统</h1>
           </div>
           <div class="brand-text">
-            <p class="brand-slogan">静心阅读 · 智慧相伴</p>
+            <p class="brand-slogan">静心阅读 · 智慧相伴 · 公平使用</p>
             <div class="divider"></div>
-            <p class="brand-desc">Smart Library Seat Reservation System</p>
+            <p class="brand-desc">Library Seat Reservation & Occupancy Supervision System</p>
           </div>
         </div>
       </div>
@@ -635,7 +635,7 @@ const fillAccount = (role: string) => {
   font-size: 18px;
   color: #334155;
   font-weight: 500;
-  letter-spacing: 4px;
+  letter-spacing: 2px;
   margin: 0 0 16px 0;
 }
 

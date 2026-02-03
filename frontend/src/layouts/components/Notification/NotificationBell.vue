@@ -58,6 +58,7 @@ import {
 import { message as antMessage } from 'ant-design-vue'
 import request from '../../../utils/request'
 import { wsService } from '../../../utils/websocket'
+import { eventBus } from '../../../utils/eventBus'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
@@ -149,10 +150,21 @@ const handleNewNotification = (notification: any) => {
   }, 1000)
 }
 
+// 处理手动刷新通知（从消息广场发送系统通知后）
+const handleRefreshNotifications = () => {
+  // 延迟一点时间，确保后端数据已更新
+  setTimeout(() => {
+    fetchUnreadCount()
+    fetchLatestNotifications()
+    antMessage.success('收到新通知')
+  }, 500)
+}
+
 onMounted(() => {
   fetchUnreadCount()
   fetchLatestNotifications()
   wsService.on('new_notification', handleNewNotification)
+  eventBus.on('refresh_notifications', handleRefreshNotifications)
   // 每30秒轮询一次
   timer = setInterval(() => {
     fetchUnreadCount()
@@ -162,6 +174,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   wsService.off('new_notification', handleNewNotification)
+  eventBus.off('refresh_notifications', handleRefreshNotifications)
   if (timer) clearInterval(timer)
 })
 </script>

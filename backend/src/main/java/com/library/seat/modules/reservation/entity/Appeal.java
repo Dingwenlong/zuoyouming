@@ -4,11 +4,9 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
 import java.io.Serializable;
 import java.util.Date;
 
-@Data
 @TableName("sys_appeal")
 @Schema(description = "违规申诉")
 public class Appeal implements Serializable {
@@ -17,28 +15,100 @@ public class Appeal implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     @Schema(description = "主键ID")
     private Long id;
-    
+
     @Schema(description = "关联预约记录ID")
     private Long reservationId;
-    
+
     @Schema(description = "申诉理由")
     private String reason;
-    
+
     @Schema(description = "图片凭证")
     private String images;
-    
+
     @Schema(description = "状态: pending, approved, rejected")
     private String status;
-    
+
     @Schema(description = "管理员回复")
     private String reply;
-    
+
     @Schema(description = "创建时间")
     private Date createTime;
-    
+
     @Schema(description = "更新时间")
     private Date updateTime;
-    
+
     @Schema(description = "是否删除 0:否 1:是")
     private Integer deleted;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Long getReservationId() {
+        return reservationId;
+    }
+
+    public void setReservationId(Long reservationId) {
+        this.reservationId = reservationId;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
+    }
+
+    public String getImages() {
+        return images;
+    }
+
+    public void setImages(String images) {
+        this.images = images;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getReply() {
+        return reply;
+    }
+
+    public void setReply(String reply) {
+        this.reply = reply;
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public Integer getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Integer deleted) {
+        this.deleted = deleted;
+    }
 }

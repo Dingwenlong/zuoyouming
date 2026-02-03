@@ -123,6 +123,7 @@ import { useUserStore } from '../../stores/user'
 import request from '../../utils/request'
 import { getConfigs } from '../../api/config'
 import { wsService } from '../../utils/websocket'
+import { eventBus } from '../../utils/eventBus'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 
@@ -172,6 +173,8 @@ const handleSendNotification = async () => {
     notificationForm.title = ''
     notificationForm.content = ''
     notificationForm.type = 'info'
+    // 触发通知刷新事件，让通知铃铛组件立即刷新
+    eventBus.emit('refresh_notifications')
   } catch (e) {
   } finally {
     sendingNotification.value = false

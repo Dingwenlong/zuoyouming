@@ -25,9 +25,6 @@
       <a-col :xs="24" :sm="24" :md="8">
         <a-card>
           <a-statistic title="总座位数" :value="stats.totalSeats" style="margin-right: 50px">
-            <template #suffix>
-              <user-outlined style="color: #1890ff" />
-            </template>
           </a-statistic>
         </a-card>
       </a-col>
@@ -93,7 +90,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  UserOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   VideoCameraOutlined,

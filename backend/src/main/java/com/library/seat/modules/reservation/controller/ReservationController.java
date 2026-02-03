@@ -16,18 +16,20 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 
-@Slf4j
 @Tag(name = "预约业务模块", description = "预约、签到、暂离、退座、申诉")
 @RestController
 @RequestMapping("/api/v1/reservations")
 public class ReservationController {
 
+    private static final Logger log = LoggerFactory.getLogger(ReservationController.class);
+
     @Autowired
     private ReservationService reservationService;
-    
+
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
 
@@ -95,18 +97,18 @@ public class ReservationController {
         appeal.setReservationId(id);
         return reservationService.appeal(appeal);
     }
-    
+
     @Operation(summary = "管理员强制释放座位")
     @PostMapping("/{id}/force-release")
     public Result<Boolean> forceRelease(@PathVariable Long id) {
         // In real app, check for admin role here or via Security Config
         return reservationService.forceRelease(id);
     }
-    
+
     @Operation(summary = "管理员处理申诉")
     @PostMapping("/appeals/{id}/review")
     public Result<Boolean> reviewAppeal(
-            @PathVariable Long id, 
+            @PathVariable Long id,
             @RequestBody Map<String, String> params) {
         // params: status (approved/rejected), reply
         String status = params.get("status");

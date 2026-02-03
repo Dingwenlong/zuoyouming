@@ -2,7 +2,8 @@ package com.library.seat.common.websocket;
 
 import com.library.seat.modules.sys.entity.SysUser;
 import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -15,9 +16,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Slf4j
 @Component
 public class WebSocketEventListener {
+
+    private static final Logger log = LoggerFactory.getLogger(WebSocketEventListener.class);
 
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
@@ -36,7 +38,7 @@ public class WebSocketEventListener {
             String sessionId = headerAccessor.getSessionId();
             onlineUsers.put(username, sessionId);
             log.info("User connected: {}, sessionId: {}", username, sessionId);
-            
+
             broadcastStatus(username, "active");
         }
     }
@@ -48,7 +50,7 @@ public class WebSocketEventListener {
             String username = headerAccessor.getUser().getName();
             onlineUsers.remove(username);
             log.info("User disconnected: {}", username);
-            
+
             broadcastStatus(username, "offline");
         }
     }
