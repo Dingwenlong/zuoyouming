@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -30,8 +31,10 @@ public class StatsController {
 
     @Operation(summary = "获取热力图数据")
     @GetMapping("/heatmap")
-    public Result<List<Object[]>> getHeatmap() {
-        return Result.success(statsService.getHeatmapData());
+    public Result<Map<String, Object>> getHeatmap(
+            @RequestParam(required = false) String date,
+            @RequestParam(defaultValue = "true") boolean simulate) {
+        return Result.success(statsService.getHeatmapDataWrapper(date, simulate));
     }
 
     @Operation(summary = "获取预约趋势数据")
@@ -42,8 +45,10 @@ public class StatsController {
 
     @Operation(summary = "获取区域拥堵度数据")
     @GetMapping("/congestion")
-    public Result<Map<String, Object>> getCongestion() {
-        return Result.success(statsService.getCongestionData());
+    public Result<Map<String, Object>> getCongestion(
+            @RequestParam(required = false) String date,
+            @RequestParam(defaultValue = "true") boolean simulate) {
+        return Result.success(statsService.getCongestionData(date, simulate));
     }
 
     @Operation(summary = "获取违规趋势数据")

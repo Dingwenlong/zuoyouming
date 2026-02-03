@@ -44,7 +44,7 @@ public class ReservationController {
 
     @Operation(summary = "创建预约")
     @PostMapping
-    public Result<Boolean> reserve(@RequestBody Reservation reservation) {
+    public Result<Map<String, Object>> reserve(@RequestBody Reservation reservation) {
         log.info("Received reservation request: {}", reservation);
         try {
             Long userId = getCurrentUserId();
@@ -52,7 +52,7 @@ public class ReservationController {
                 return Result.error("用户未登录或Token失效");
             }
             reservation.setUserId(userId);
-            return reservationService.reserve(reservation);
+            return (Result<Map<String, Object>>) (Result<?>) reservationService.reserve(reservation);
         } catch (Exception e) {
             log.error("Failed to create reservation", e);
             throw e; // Let global exception handler process it, or return Result.error
@@ -61,8 +61,8 @@ public class ReservationController {
 
     @Operation(summary = "签到")
     @PostMapping("/{id}/check-in")
-    public Result<Boolean> checkIn(@PathVariable Long id) {
-        return reservationService.checkIn(id, getCurrentUserId());
+    public Result<Boolean> checkIn(@PathVariable Long id, @RequestBody(required = false) java.util.Map<String, Object> params) {
+        return reservationService.checkIn(id, getCurrentUserId(), params);
     }
 
     @Operation(summary = "暂离")

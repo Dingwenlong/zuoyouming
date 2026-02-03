@@ -3,13 +3,31 @@
     <a-page-header
       title="数据统计分析"
       sub-title="查看座位使用热力图、违规趋势及区域拥堵情况"
-    />
+    >
+      <template #extra>
+        <a-space>
+          <span>数据模拟:</span>
+          <a-switch v-model:checked="isSimulate" @change="handleSimulateChange" />
+        </a-space>
+      </template>
+    </a-page-header>
     
     <a-row :gutter="[24, 24]">
       <!-- 区域拥堵度 (柱状图) -->
       <a-col :xs="24" :lg="12">
         <a-card title="区域拥堵度分析" :bordered="false">
-          <base-chart :options="congestionOption" height="350px" />
+          <template #extra>
+            <a-date-picker 
+              v-model:value="congestionDate" 
+              size="small"
+              :allow-clear="false"
+              :disabled-date="disabledDate"
+              @change="handleCongestionDateChange"
+            />
+          </template>
+          <a-spin :spinning="congestionLoading">
+            <base-chart :options="congestionOption" height="350px" />
+          </a-spin>
         </a-card>
       </a-col>
 
@@ -23,7 +41,21 @@
       <!-- 座位热力图 -->
       <a-col :span="24">
         <a-card title="图书馆座位使用热力图" :bordered="false">
-          <base-chart :options="heatmapOption" height="500px" />
+          <template #extra>
+            <a-space>
+              <span>选择日期:</span>
+              <a-date-picker 
+                v-model:value="selectedDate" 
+                :allow-clear="false"
+                :disabled-date="disabledDate"
+                @change="handleDateChange"
+                placeholder="选择统计日期"
+              />
+            </a-space>
+          </template>
+          <a-spin :spinning="heatmapLoading">
+            <base-chart :options="heatmapOption" height="500px" />
+          </a-spin>
         </a-card>
       </a-col>
     </a-row>
@@ -34,24 +66,79 @@
 import { computed, ref, onMounted } from 'vue'
 import BaseChart from '../components/Chart/BaseChart.vue'
 import { getHeatmapData, getCongestionData, getViolationTrend } from '../api/stats'
+import dayjs, { Dayjs } from 'dayjs'
 
 const hours = ['8:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
-const days = ['A区', 'B区', 'C区', 'D区', 'E区']
+const days = ref(['A区', 'B区', 'C区', 'D区', 'E区'])
 
 const heatmapData = ref([])
+const heatmapLoading = ref(false)
+const selectedDate = ref<Dayjs>(dayjs())
 const congestionData = ref<Record<string, number>>({})
+const congestionDate = ref<Dayjs>(dayjs())
+const congestionLoading = ref(false)
 const violationData = ref({ dates: [], counts: [] })
+const isSimulate = ref(true)
+
+const fetchHeatmap = async (date?: string) => {
+  heatmapLoading.value = true
+  try {
+    const res = await getHeatmapData(date, isSimulate.value)
+    const result = (res as any).data || res
+    heatmapData.value = result.data || result
+    if (result.areas) {
+      days.value = result.areas
+    }
+  } catch (error) {
+    console.error(error)
+  } finally {
+    heatmapLoading.value = false
+  }
+}
+
+const fetchCongestion = async (date?: string) => {
+  congestionLoading.value = true
+  try {
+    const res = await getCongestionData(date, isSimulate.value)
+    congestionData.value = (res as any).data || res
+  } catch (error) {
+    console.error(error)
+  } finally {
+    congestionLoading.value = false
+  }
+}
+
+const handleDateChange = (date: Dayjs) => {
+  if (date) {
+    fetchHeatmap(date.format('YYYY-MM-DD'))
+  }
+}
+
+const handleCongestionDateChange = (date: Dayjs) => {
+  if (date) {
+    fetchCongestion(date.format('YYYY-MM-DD'))
+  }
+}
+
+const handleSimulateChange = () => {
+  fetchHeatmap(selectedDate.value.format('YYYY-MM-DD'))
+  fetchCongestion(congestionDate.value.format('YYYY-MM-DD'))
+}
+
+const disabledDate = (current: Dayjs) => {
+  return current && current > dayjs().endOf('day')
+}
 
 onMounted(async () => {
   try {
-    const [hRes, cRes, vRes] = await Promise.all([
-      getHeatmapData(),
-      getCongestionData(),
+    const [vRes] = await Promise.all([
       getViolationTrend()
     ])
-    heatmapData.value = (hRes as any).data || hRes
-    congestionData.value = (cRes as any).data || cRes
     violationData.value = (vRes as any).data || vRes
+    
+    // 默认获取当天数据
+    fetchHeatmap(selectedDate.value.format('YYYY-MM-DD'))
+    fetchCongestion(congestionDate.value.format('YYYY-MM-DD'))
   } catch (error) {
     console.error(error)
   }
@@ -129,7 +216,7 @@ const heatmapOption = computed(() => ({
   },
   yAxis: {
     type: 'category',
-    data: days,
+    data: days.value,
     splitArea: { show: true }
   },
   visualMap: {

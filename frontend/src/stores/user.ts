@@ -31,6 +31,7 @@ export const useUserStore = defineStore('user', () => {
     id: number
     seatId: number
     seatNo: string
+    startTime: number // 开始时间戳
     deadline: number // 截止时间戳
     status: 'reserved' | 'checked_in' | 'away'
   } | null>(
@@ -39,9 +40,8 @@ export const useUserStore = defineStore('user', () => {
       : null
   )
 
-  function setReservation(id: number, seatId: number, seatNo: string) {
-    const deadline = Date.now() + 15 * 60 * 1000 // 15分钟后截止
-    const data = { id, seatId, seatNo, deadline, status: 'reserved' as const }
+  function setReservation(id: number, seatId: number, seatNo: string, startTime: number, deadline: number) {
+    const data = { id, seatId, seatNo, startTime, deadline, status: 'reserved' as const }
     reservation.value = data
     localStorage.setItem('reservation', JSON.stringify(data))
   }
@@ -184,10 +184,12 @@ export const useUserStore = defineStore('user', () => {
       if (activeRes) {
         // 同步后端状态到本地
         const deadline = activeRes.deadline ? new Date(activeRes.deadline).getTime() : Date.now() + 15 * 60 * 1000
+        const startTime = activeRes.startTime ? new Date(activeRes.startTime).getTime() : Date.now()
         const data = {
           id: activeRes.id,
           seatId: activeRes.seatId,
           seatNo: activeRes.seatNo || '',
+          startTime: startTime,
           deadline: deadline,
           status: activeRes.status as any
         }

@@ -2,10 +2,12 @@ import request from '../utils/request'
 
 export interface ReservationRecord {
   id: number
-  seatNumber: string
+  seatId: number
+  seatNo: string
+  slot: string
   startTime: string
   endTime: string
-  status: 'active' | 'completed' | 'cancelled' | 'violation'
+  status: string
   type: 'appointment' | 'checkin'
 }
 
@@ -87,11 +89,12 @@ export function submitAppeal(id: number, data: { reason: string, images?: string
   })
 }
 
-export function checkIn(id: number) {
+export function checkIn(id: number, params: { qrCode?: string; lat?: number; lng?: number }) {
   if (USE_MOCK) return Promise.resolve()
   return request({
     url: `/reservations/${id}/check-in`,
-    method: 'post'
+    method: 'post',
+    data: params
   })
 }
 

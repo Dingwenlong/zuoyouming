@@ -43,6 +43,10 @@ public class Reservation implements Serializable {
 
     @Schema(description = "时段: morning(08:00-12:00), afternoon(13:00-17:00), evening(18:00-22:00)", example = "morning")
     private String slot;
+
+    @TableField(exist = false)
+    @Schema(description = "批量预约时段")
+    private java.util.List<String> slots;
     
     @Schema(description = "状态: reserved, checked_in, completed, cancelled, violation", example = "reserved")
     private String status;

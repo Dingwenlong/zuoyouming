@@ -109,7 +109,7 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Result<Boolean> reserve(Reservation reservation) {
+    public Result<Map<String, Object>> reserve(Reservation reservation) {
         String lockKey = "lock:seat:" + reservation.getSeatId();
         // 简单分布式锁 (SetNX)
         Boolean lock = redisTemplate.opsForValue().setIfAbsent(lockKey, String.valueOf(reservation.getUserId()), 10, TimeUnit.SECONDS);
@@ -126,38 +126,57 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
                 return Result.error("您的信用分低于 " + minScore + " 分，暂时无法预约。请通过申诉或联系管理员处理。");
             }
 
-            // 1. 检查座位是否存在且空闲
+            // 1. 检查座位是否存在
             Seat seat = seatService.getById(reservation.getSeatId());
-            if (seat == null || !"available".equals(seat.getStatus())) {
-                return Result.error("座位已被预约或不可用");
+            if (seat == null || "maintenance".equals(seat.getStatus())) {
+                return Result.error("座位不存在或正在维护中");
             }
-            
-            // 2. 检查用户是否有未完成的预约
-            Long count = this.baseMapper.selectCount(new LambdaQueryWrapper<Reservation>()
-                    .eq(Reservation::getUserId, reservation.getUserId())
-                    .in(Reservation::getStatus, "reserved", "checked_in", "away"));
-            
-            if (count > 0) {
-                return Result.error("您当前已有预约，不能重复预约");
+
+            // 获取需要预约的时段列表
+            List<String> slots = reservation.getSlots();
+            if (slots == null || slots.isEmpty()) {
+                if (reservation.getSlot() != null) {
+                    slots = java.util.Collections.singletonList(reservation.getSlot());
+                } else {
+                    return Result.error("请选择预约时段");
+                }
+            }
+
+            // 2. 检查冲突 (座位冲突和用户冲突)
+            for (String slot : slots) {
+                // 检查座位在该时段是否已被占用
+                Long seatOccupied = this.baseMapper.selectCount(new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getSeatId, reservation.getSeatId())
+                        .eq(Reservation::getSlot, slot)
+                        .in(Reservation::getStatus, "reserved", "checked_in", "away"));
+                if (seatOccupied > 0) {
+                    return Result.error("座位在时段 " + slot + " 已被预约");
+                }
+
+                // 检查用户在该时段是否已有预约
+                Long userReserved = this.baseMapper.selectCount(new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getUserId, reservation.getUserId())
+                        .eq(Reservation::getSlot, slot)
+                        .in(Reservation::getStatus, "reserved", "checked_in", "away"));
+                if (userReserved > 0) {
+                    return Result.error("您在时段 " + slot + " 已有预约，请勿重复预约");
+                }
             }
 
             // 3. 创建预约
-            reservation.setStatus("reserved");
-            if (reservation.getType() == null) {
-                reservation.setType("appointment");
-            }
-            
-            // Set start/end time based on slot or defaults
             Date now = new Date();
+            List<Reservation> createdReservations = new java.util.ArrayList<>();
             
-            if (reservation.getSlot() != null) {
-                // Calculate times based on slot
-                // Assume slot is for today. If current time is past slot start, maybe it's for tomorrow?
-                // For simplicity, let's assume it's for today.
-                // morning: 08:00-12:00
-                // afternoon: 13:00-17:00
-                // evening: 18:00-22:00
+            for (String slot : slots) {
+                Reservation res = new Reservation();
+                org.springframework.beans.BeanUtils.copyProperties(reservation, res);
+                res.setSlot(slot);
+                res.setStatus("reserved");
+                if (res.getType() == null) {
+                    res.setType("appointment");
+                }
                 
+                // 计算该时段的起止时间
                 java.util.Calendar cal = java.util.Calendar.getInstance();
                 cal.setTime(now);
                 int year = cal.get(java.util.Calendar.YEAR);
@@ -169,7 +188,7 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
                 java.util.Calendar endCal = java.util.Calendar.getInstance();
                 endCal.set(year, month, day, 0, 0, 0);
                 
-                switch (reservation.getSlot()) {
+                switch (slot) {
                     case "morning":
                         startCal.set(java.util.Calendar.HOUR_OF_DAY, 8);
                         endCal.set(java.util.Calendar.HOUR_OF_DAY, 12);
@@ -182,57 +201,97 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
                         startCal.set(java.util.Calendar.HOUR_OF_DAY, 18);
                         endCal.set(java.util.Calendar.HOUR_OF_DAY, 22);
                         break;
-                    default:
-                        // Invalid slot, fallback to default logic
-                        break;
                 }
                 
-                if (reservation.getStartTime() == null) {
-                    reservation.setStartTime(startCal.getTime());
-                }
-                if (reservation.getEndTime() == null) {
-                    reservation.setEndTime(endCal.getTime());
-                }
-            }
-            
-            // Fallback if still null
-            if (reservation.getStartTime() == null) {
-                reservation.setStartTime(now);
-            }
-            if (reservation.getEndTime() == null) {
-                // Default duration: 4 hours
-                reservation.setEndTime(new Date(reservation.getStartTime().getTime() + 4 * 60 * 60 * 1000));
+                res.setStartTime(startCal.getTime());
+                res.setEndTime(endCal.getTime());
+                
+                // 设置签到截止时间: start_time + checkin_after_window
+                int checkInAfter = configService.getIntValue("checkin_after_window", 15);
+                res.setDeadline(new Date(res.getStartTime().getTime() + (long) checkInAfter * 60 * 1000));
+                res.setCreateTime(now);
+                this.save(res);
+                createdReservations.add(res);
             }
 
-            // 设置签到截止时间: start_time + 配置分钟数
-            int violationTime = configService.getIntValue("violation_time", 30);
-            reservation.setDeadline(new Date(reservation.getStartTime().getTime() + (long) violationTime * 60 * 1000));
-            reservation.setCreateTime(now);
-            this.save(reservation);
-
-            // 4. 更新座位状态
-            seat.setStatus("occupied");
-            seatService.updateById(seat);
+            // 4. 更新座位实时状态 (如果当前有时段被占用，则设为 occupied)
+            updateSeatRealtimeStatus(reservation.getSeatId());
 
             // 5. 广播更新
             broadcastReservationUpdate(reservation.getUserId(), "reservation_success", "预约成功");
-            seatService.broadcastSeatUpdate(seat.getId(), "occupied");
             statsService.broadcastStats();
 
             // 6. 发送通知
-            notificationService.send(reservation.getUserId(), "预约成功", "您已成功预约座位 " + seat.getSeatNo() + "，请在规定时间内签到。", "success");
+            notificationService.send(reservation.getUserId(), "预约成功", "您已成功预约座位 " + seat.getSeatNo() + " (" + String.join(",", slots) + ")，请在规定时间内签到。", "success");
 
             // 7. 记录日志
-            sysLogService.log(user.getUsername(), "预约座位", "预约座位号: " + seat.getSeatNo());
+            sysLogService.log(user.getUsername(), "批量预约座位", "座位号: " + seat.getSeatNo() + ", 时段: " + String.join(",", slots));
 
-            return Result.success(true);
+            // 返回第一个时段的信息用于前端倒计时
+            Reservation first = createdReservations.get(0);
+            Map<String, Object> result = new HashMap<>();
+            result.put("id", first.getId());
+            result.put("startTime", first.getStartTime());
+            result.put("deadline", first.getDeadline());
+
+            return Result.success(result);
         } finally {
             redisTemplate.delete(lockKey);
         }
     }
 
+    private void updateSeatRealtimeStatus(Long seatId) {
+        String currentSlot = getCurrentSlot();
+        if (currentSlot == null) {
+            seatService.updateStatus(seatId, "available");
+            return;
+        }
+
+        Long count = this.baseMapper.selectCount(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getSeatId, seatId)
+                .eq(Reservation::getSlot, currentSlot)
+                .in(Reservation::getStatus, "reserved", "checked_in", "away"));
+        
+        String newStatus = count > 0 ? "occupied" : "available";
+        seatService.updateStatus(seatId, newStatus);
+        seatService.broadcastSeatUpdate(seatId, newStatus);
+    }
+
+    private String getCurrentSlot() {
+        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        if (hour >= 8 && hour < 12) return "morning";
+        if (hour >= 13 && hour < 17) return "afternoon";
+        if (hour >= 18 && hour < 22) return "evening";
+        return null;
+    }
+
+    private void autoCheckInNextSlots(Reservation current) {
+        String nextSlot = getNextSlot(current.getSlot());
+        if (nextSlot == null) return;
+
+        Reservation nextRes = this.getOne(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getUserId, current.getUserId())
+                .eq(Reservation::getSeatId, current.getSeatId())
+                .eq(Reservation::getSlot, nextSlot)
+                .eq(Reservation::getStatus, "reserved"));
+
+        if (nextRes != null) {
+            nextRes.setStatus("checked_in");
+            nextRes.setDeadline(null);
+            this.updateById(nextRes);
+            // 递归处理下一个
+            autoCheckInNextSlots(nextRes);
+        }
+    }
+
+    private String getNextSlot(String slot) {
+        if ("morning".equals(slot)) return "afternoon";
+        if ("afternoon".equals(slot)) return "evening";
+        return null;
+    }
+
     @Transactional(rollbackFor = Exception.class)
-    public Result<Boolean> checkIn(Long id, Long userId) {
+    public Result<Boolean> checkIn(Long id, Long userId, Map<String, Object> params) {
         Reservation reservation = this.getById(id);
 
         if (reservation == null || !reservation.getUserId().equals(userId)) {
@@ -243,15 +302,69 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
             return Result.error("当前状态不可签到");
         }
         
-        // 检查截止时间
-        if (reservation.getDeadline() != null && new Date().after(reservation.getDeadline())) {
-             return Result.error("已超过签到/返回截止时间");
+        long nowTime = System.currentTimeMillis();
+        long startTime = reservation.getStartTime().getTime();
+        int beforeWindow = configService.getIntValue("checkin_before_window", 15);
+        int afterWindow = configService.getIntValue("checkin_after_window", 15);
+
+        // 1. 针对预约签到 (reserved -> checked_in)
+        if ("reserved".equals(reservation.getStatus())) {
+            if (nowTime < startTime - (long) beforeWindow * 60 * 1000) {
+                return Result.error("尚未到达签到时间，请在起始时间前" + beforeWindow + "分钟内签到");
+            }
+            if (nowTime > startTime + (long) afterWindow * 60 * 1000) {
+                return Result.error("已超过签到截止时间");
+            }
+        }
+        
+        // 2. 针对暂离返回 (away -> checked_in)
+        if ("away".equals(reservation.getStatus())) {
+            if (reservation.getDeadline() != null && nowTime > reservation.getDeadline().getTime()) {
+                 return Result.error("已超过暂离返回截止时间");
+            }
+        }
+
+        // 校验位置或扫码
+        if (params != null) {
+            // 1. 定位校验
+            if (params.containsKey("lat") && params.containsKey("lng")) {
+                double userLat = Double.parseDouble(params.get("lat").toString());
+                double userLng = Double.parseDouble(params.get("lng").toString());
+                double libLat = configService.getDoubleValue("library_latitude", 0);
+                double libLng = configService.getDoubleValue("library_longitude", 0);
+                
+                if (libLat != 0 && libLng != 0) {
+                    double distance = calculateDistance(userLat, userLng, libLat, libLng);
+                    if (distance > 200) {
+                        return Result.error(String.format("您距离图书馆太远 (%.1f米)，请到馆后再签到", distance));
+                    }
+                }
+            } 
+            // 2. 扫码校验
+            else if (params.containsKey("qrCode")) {
+                String qrCode = params.get("qrCode").toString();
+                // 预期格式: "Area:A区,SeatNo:A-01"
+                Seat seat = seatService.getById(reservation.getSeatId());
+                if (seat != null) {
+                    String expected = "Area:" + seat.getArea() + ",SeatNo:" + seat.getSeatNo();
+                    if (!expected.equals(qrCode)) {
+                        return Result.error("二维码信息不匹配，请扫描正确的座位二维码");
+                    }
+                }
+            } else {
+                return Result.error("未提供有效的签到凭证");
+            }
+        } else {
+            return Result.error("请使用扫码或定位进行签到");
         }
 
         // 更新预约状态
         reservation.setStatus("checked_in");
         reservation.setDeadline(null); // 清除截止时间
         this.updateById(reservation);
+        
+        // 处理连续时段自动签到
+        autoCheckInNextSlots(reservation);
         
         seatService.broadcastSeatUpdate(reservation.getSeatId(), "occupied");
 
@@ -266,6 +379,17 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         }
 
         return Result.success(true);
+    }
+
+    private double calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+        double earthRadius = 6371000; // meters
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                   Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                   Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return earthRadius * c;
     }
     
     @Transactional(rollbackFor = Exception.class)
@@ -305,6 +429,37 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
             return Result.error("当前状态无需释放");
         }
 
+        String originalStatus = reservation.getStatus();
+        long nowTime = System.currentTimeMillis();
+        long startTime = reservation.getStartTime().getTime();
+        int bufferTime = configService.getIntValue("release_buffer_time", 15);
+
+        // 检查退座规则：必须在起始时间 release_buffer_time 分钟前退座
+        if ("reserved".equals(originalStatus)) {
+            if (nowTime > startTime - (long) bufferTime * 60 * 1000) {
+                // 视为违约
+                reservation.setStatus("violation");
+                reservation.setEndTime(new Date());
+                this.updateById(reservation);
+
+                // 释放座位
+                Seat seat = seatService.getById(reservation.getSeatId());
+                if (seat != null) {
+                    seat.setStatus("available");
+                    seatService.updateById(seat);
+                    seatService.broadcastSeatUpdate(seat.getId(), "available");
+                }
+
+                // 扣除信用分 (-10)
+                userDetailsService.deductCreditScore(userId, 10);
+
+                // 发送通知
+                notificationService.send(userId, "退座违约扣分", "由于您在预约起始时间" + bufferTime + "分钟内取消，已被视为违约并扣除信用分。", "error");
+                
+                return Result.success(true);
+            }
+        }
+
         // 更新预约状态
         reservation.setStatus("completed");
         reservation.setEndTime(new Date()); // Actual end time
@@ -318,11 +473,15 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
             seatService.broadcastSeatUpdate(seat.getId(), "available");
         }
 
-        // 履约奖励: +2 信用分
-        userDetailsService.addCreditScore(userId, 2);
+        // 履约奖励: +2 信用分 (仅限已签到并正常结束的情况)
+        if ("checked_in".equals(originalStatus)) {
+            userDetailsService.addCreditScore(userId, 2);
+        }
 
         // 发送通知
-        notificationService.send(userId, "取消预约成功", "您的预约已取消，座位已释放。", "info");
+        String notifyTitle = "reserved".equals(originalStatus) ? "取消预约成功" : "释放座位成功";
+        String notifyMsg = "reserved".equals(originalStatus) ? "您的预约已取消，座位已释放。" : "您已成功结束座位使用，欢迎下次光临。";
+        notificationService.send(userId, notifyTitle, notifyMsg, "info");
 
         // 记录日志
         SysUser user = userDetailsService.getById(userId);
@@ -381,6 +540,7 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
         Reservation res = this.getOne(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getUserId, userId)
                 .in(Reservation::getStatus, "reserved", "checked_in", "away")
+                .orderByAsc(Reservation::getStartTime)
                 .last("LIMIT 1"));
         
         if (res != null) {

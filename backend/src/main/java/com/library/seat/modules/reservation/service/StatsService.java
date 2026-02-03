@@ -86,67 +86,124 @@ public class StatsService {
         return map != null && map.get("count") != null ? ((Number) map.get("count")).longValue() : 0L;
     }
 
-    public List<Object[]> getHeatmapData() {
-        String[] areas = {"A区", "B区", "C区", "D区", "E区"};
-        int[] hourThresholds = {8, 10, 12, 14, 16, 18, 20, 22};
+    public Map<String, Object> getHeatmapDataWrapper(String dateStr, boolean simulate) {
+        // 1. 获取所有实际存在的区域
+        List<Seat> allSeats = seatService.list(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Seat>()
+                .eq(Seat::getDeleted, 0));
+        List<String> areas = allSeats.stream()
+                .map(Seat::getArea)
+                .filter(a -> a != null && !a.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
         
+        if (areas.isEmpty()) {
+            areas = Arrays.asList("A区", "B区", "C区", "D区", "E区");
+        }
+
+        List<Object[]> data = getHeatmapData(dateStr, simulate);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", data);
+        result.put("areas", areas);
+        return result;
+    }
+
+    public List<Object[]> getHeatmapData(String dateStr, boolean simulate) {
+        // 1. 获取所有实际存在的区域
+        List<Seat> allSeats = seatService.list(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Seat>()
+                .eq(Seat::getDeleted, 0));
+        List<String> areas = allSeats.stream()
+                .map(Seat::getArea)
+                .filter(a -> a != null && !a.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        
+        // 如果没有数据，使用默认区域
+        if (areas.isEmpty()) {
+            areas = Arrays.asList("A区", "B区", "C区", "D区", "E区");
+        }
+
+        int[] hourThresholds = {8, 10, 12, 14, 16, 18, 20, 22};
         List<Object[]> heatmap = new ArrayList<>();
         
-        // 统计过去 30 天的数据以获得更准确的趋势
-        java.time.LocalDateTime thirtyDaysAgo = java.time.LocalDateTime.now().minusDays(30);
+        java.time.LocalDate targetDate;
+        if (dateStr == null || dateStr.isEmpty()) {
+            targetDate = java.time.LocalDate.now();
+        } else {
+            try {
+                targetDate = java.time.LocalDate.parse(dateStr);
+            } catch (Exception e) {
+                targetDate = java.time.LocalDate.now();
+            }
+        }
+
+        // 2. 统计选定日期的预约数据
+        java.time.LocalDateTime startOfDay = targetDate.atStartOfDay();
+        java.time.LocalDateTime endOfDay = targetDate.plusDays(1).atStartOfDay();
         
         List<com.library.seat.modules.reservation.entity.Reservation> reservations = reservationService.list(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.library.seat.modules.reservation.entity.Reservation>()
-                .ge(com.library.seat.modules.reservation.entity.Reservation::getStartTime, java.util.Date.from(thirtyDaysAgo.atZone(java.time.ZoneId.systemDefault()).toInstant()))
+                .ge(com.library.seat.modules.reservation.entity.Reservation::getStartTime, java.util.Date.from(startOfDay.atZone(java.time.ZoneId.systemDefault()).toInstant()))
+                .lt(com.library.seat.modules.reservation.entity.Reservation::getStartTime, java.util.Date.from(endOfDay.atZone(java.time.ZoneId.systemDefault()).toInstant()))
                 .eq(com.library.seat.modules.reservation.entity.Reservation::getDeleted, 0));
                 
-        // 获取所有座位以便知道区域
-        List<Seat> allSeats = seatService.list();
+        // 获取座位区域映射
         Map<Long, String> seatAreaMap = allSeats.stream()
                 .filter(s -> s.getArea() != null)
                 .collect(Collectors.toMap(Seat::getId, Seat::getArea, (a, b) -> a));
 
-        // 按区域统计座位总数，用于计算占用率
+        // 按区域统计座位总数
         Map<String, Long> areaTotalSeats = allSeats.stream()
                 .filter(s -> s.getArea() != null)
                 .collect(Collectors.groupingBy(Seat::getArea, Collectors.counting()));
 
         Random random = new Random();
 
-        for (int j = 0; j < areas.length; j++) {
-            String area = areas[j];
+        for (int j = 0; j < areas.size(); j++) {
+            String area = areas.get(j);
             long totalSeatsInArea = areaTotalSeats.getOrDefault(area, 1L);
             
             for (int i = 0; i < hourThresholds.length; i++) {
                 final int h = hourThresholds[i];
                 final String currentArea = area;
                 
-                // 统计在该时段内有预约的次数
+                // 3. 计算该时段内的占用情况 (优化逻辑：检查时间重叠)
                 long count = reservations.stream()
                         .filter(r -> {
                             String rArea = seatAreaMap.get(r.getSeatId());
                             if (rArea == null || !rArea.equals(currentArea)) return false;
                             
-                            java.util.Calendar cal = java.util.Calendar.getInstance();
-                            cal.setTime(r.getStartTime());
-                            int startHour = cal.get(java.util.Calendar.HOUR_OF_DAY);
-                            return startHour >= h && startHour < h + 2;
+                            // 预约时间段
+                            long rStart = r.getStartTime().getTime();
+                            long rEnd = r.getEndTime() != null ? r.getEndTime().getTime() : System.currentTimeMillis();
+                            
+                            // 插槽时间段 (2小时)
+                            java.util.Calendar slotStart = java.util.Calendar.getInstance();
+                            slotStart.setTime(java.util.Date.from(startOfDay.atZone(java.time.ZoneId.systemDefault()).toInstant()));
+                            slotStart.set(java.util.Calendar.HOUR_OF_DAY, h);
+                            
+                            java.util.Calendar slotEnd = (java.util.Calendar) slotStart.clone();
+                            slotEnd.add(java.util.Calendar.HOUR, 2);
+                            
+                            // 判断是否有重叠
+                            return rStart < slotEnd.getTimeInMillis() && rEnd > slotStart.getTimeInMillis();
                         })
                         .count();
                 
-                // 计算强度：平均每天在该时段的预约量占区域总座位的比例
-                // intensity = (总预约数 / 30天) / 区域总座位数 * 100
-                double avgDailyReservations = count / 30.0;
-                int intensity = (int) Math.min(100, (avgDailyReservations / totalSeatsInArea) * 500); // 放大系数 500 使颜色更明显
+                // 计算强度：该时段的预约量占区域总座位的比例
+                int intensity = (int) Math.min(100, ((double) count / totalSeatsInArea) * 100); 
                 
-                // 如果是空数据，给一点随机基础值增强视觉效果 (模拟基础人流)
-                if (intensity < 5) {
-                    intensity = 5 + random.nextInt(15);
-                }
-                
-                // 模拟一些高峰时段 (14:00 - 16:00, 19:00 - 21:00)
-                if ((h >= 14 && h <= 16) || (h >= 18 && h <= 20)) {
-                    intensity += random.nextInt(20);
+                if (simulate) {
+                    // 如果是空数据，给一点随机基础值增强视觉效果
+                    if (intensity < 5) {
+                        intensity = 5 + random.nextInt(10);
+                    }
+                    // 高峰模拟
+                    if ((h >= 14 && h <= 16) || (h >= 18 && h <= 20)) {
+                        intensity += random.nextInt(15);
+                    }
                 }
                 
                 heatmap.add(new Object[]{i, j, Math.min(100, intensity)});
@@ -172,7 +229,7 @@ public class StatsService {
         return result;
     }
 
-    public Map<String, Object> getCongestionData() {
+    public Map<String, Object> getCongestionData(String dateStr, boolean simulate) {
         List<Seat> allSeats = seatService.list(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Seat>()
                 .eq(Seat::getDeleted, 0));
         
@@ -182,20 +239,48 @@ public class StatsService {
                 .collect(Collectors.groupingBy(Seat::getArea));
         
         Map<String, Object> result = new LinkedHashMap<>();
-        
-        // 计算每个区域的拥堵度: (占用座位数 / 总座位数) * 100
-        // 按照区域名称排序
         List<String> sortedAreas = seatsByArea.keySet().stream().sorted().collect(Collectors.toList());
-        
-        for (String area : sortedAreas) {
-            List<Seat> seats = seatsByArea.get(area);
-            long total = seats.size();
-            long occupied = seats.stream()
-                    .filter(s -> "occupied".equals(s.getStatus()))
-                    .count();
+
+        java.time.LocalDate targetDate;
+        if (dateStr == null || dateStr.isEmpty()) {
+            targetDate = java.time.LocalDate.now();
+        } else {
+            try {
+                targetDate = java.time.LocalDate.parse(dateStr);
+            } catch (Exception e) {
+                targetDate = java.time.LocalDate.now();
+            }
+        }
+
+        // 如果是今天，显示实时拥堵度
+        if (targetDate.equals(java.time.LocalDate.now())) {
+            for (String area : sortedAreas) {
+                List<Seat> seats = seatsByArea.get(area);
+                long total = seats.size();
+                long occupied = seats.stream()
+                        .filter(s -> "occupied".equals(s.getStatus()))
+                        .count();
+                
+                double occupancyRate = total > 0 ? (double) occupied / total * 100 : 0;
+                result.put(area, Math.round(occupancyRate * 10) / 10.0);
+            }
+        } else {
+            // 如果是历史日期，基于该天的热力图数据计算平均拥堵度
+            List<Object[]> heatmap = getHeatmapData(dateStr, simulate);
+            // heatmap data format: [hourIndex, areaIndex, intensity]
             
-            double occupancyRate = total > 0 ? (double) occupied / total * 100 : 0;
-            result.put(area, Math.round(occupancyRate * 10) / 10.0); // 保留一位小数
+            for (int j = 0; j < sortedAreas.size(); j++) {
+                String area = sortedAreas.get(j);
+                final int areaIdx = j;
+                
+                double avgIntensity = heatmap.stream()
+                        .filter(h -> (int)h[1] == areaIdx)
+                        .mapToDouble(h -> ((Number)h[2]).doubleValue())
+                        .average()
+                        .orElse(0.0);
+                
+                result.put(area, Math.round(avgIntensity * 10) / 10.0);
+            }
         }
         
         return result;

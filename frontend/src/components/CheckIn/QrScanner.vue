@@ -9,6 +9,10 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { Html5QrcodeScanner } from 'html5-qrcode'
 
+const props = defineProps<{
+  allowFile?: boolean
+}>()
+
 const emit = defineEmits(['scan', 'error'])
 const error = ref('')
 let scanner: Html5QrcodeScanner | null = null
@@ -49,6 +53,15 @@ const onScanFailure = (_errorMessage: string) => {
   width: 100%;
   max-width: 500px;
   margin: 0 auto;
+}
+
+/* 隐藏文件选择按钮（如果 props.allowFile 为 false） */
+:deep(#reader__dashboard_section_swaplink) {
+  display: v-bind(allowFile ? 'inline-block' : 'none') !important;
+}
+
+:deep(input[type="file"]) {
+  display: v-bind(allowFile ? 'block' : 'none') !important;
 }
 .scan-status {
   margin-top: 10px;

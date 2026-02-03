@@ -32,7 +32,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ClockCircleOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '../../stores/user'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { checkIn, temporaryLeave, releaseSeat } from '../../api/reservation'
 
 const userStore = useUserStore()
@@ -101,16 +101,40 @@ const handleLeave = async () => {
 
 const handleRelease = async () => {
   if (!reservation.value?.id) return
-  loading.value = true
-  try {
-    await releaseSeat(reservation.value.id)
-    userStore.clearReservation()
-    message.success('已主动释放座位')
-  } catch (e) {
-    // message.error('操作失败')
-  } finally {
-    loading.value = false
+
+  const doRelease = async () => {
+    loading.value = true
+    try {
+      await releaseSeat(reservation.value!.id)
+      userStore.clearReservation()
+      message.success('已释放座位')
+    } catch (e) {
+      // Error handled by interceptor
+    } finally {
+      loading.value = false
+    }
   }
+
+  // 检查是否在起始时间前15分钟内
+  if (reservation.value.status === 'reserved') {
+    const now = Date.now()
+    const startTime = reservation.value.startTime
+    const windowMs = 15 * 60 * 1000
+
+    if (now > startTime - windowMs) {
+      Modal.confirm({
+        title: '违规取消提醒',
+        content: '当前已进入预约起始时间前15分钟，此时取消将被视为违约并扣除10信用分。确定要取消吗？',
+        okText: '确定取消',
+        okType: 'danger',
+        cancelText: '暂不取消',
+        onOk: doRelease
+      })
+      return
+    }
+  }
+
+  doRelease()
 }
 
 onMounted(() => {

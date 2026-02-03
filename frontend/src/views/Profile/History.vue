@@ -13,25 +13,36 @@
           
           <div class="record-item">
             <div class="record-header">
-              <span class="seat-no">{{ record.seatNumber }} 座位</span>
+              <span class="seat-no">{{ record.seatNo }} 座位</span>
               <a-tag :color="getStatusColor(record.status)">
                 {{ getStatusText(record.status) }}
               </a-tag>
-              <a-button 
-                type="link" 
-                size="small" 
-                danger 
-                v-if="record.status === 'violation'"
-                @click="handleAppeal(record)"
-              >
-                申诉
-              </a-button>
+              <div class="action-buttons">
+                <a-button 
+                  type="link" 
+                  size="small" 
+                  danger 
+                  v-if="record.status === 'violation'"
+                  @click="handleAppeal(record)"
+                >
+                  申诉
+                </a-button>
+                <a-button 
+                  type="link" 
+                  size="small" 
+                  danger 
+                  v-if="record.status === 'reserved'"
+                  @click="handleCancel(record)"
+                >
+                  取消
+                </a-button>
+              </div>
             </div>
             <div class="record-time">
-              {{ record.startTime }} ~ {{ record.endTime }}
+              {{ formatTimeRange(record) }}
             </div>
             <div class="record-type">
-              类型：{{ record.type === 'appointment' ? '预约' : '现场签到' }}
+              时段：{{ getSlotText(record.slot) }} | 类型：{{ record.type === 'appointment' ? '预约' : '现场签到' }}
             </div>
           </div>
         </a-timeline-item>
@@ -78,10 +89,13 @@ import {
   CheckCircleOutlined, 
   CloseCircleOutlined, 
   ExclamationCircleOutlined,
-  PlusOutlined
+  PlusOutlined,
+  PlayCircleOutlined,
+  StopOutlined
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import { getMyHistory, submitAppeal as submitAppealApi, type ReservationRecord } from '../../api/reservation'
+import { message, Modal } from 'ant-design-vue'
+import { getMyHistory, submitAppeal as submitAppealApi, releaseSeat, type ReservationRecord } from '../../api/reservation'
+import dayjs from 'dayjs'
 
 const history = ref<ReservationRecord[]>([])
 const appealVisible = ref(false)
@@ -90,13 +104,17 @@ const currentRecord = ref<ReservationRecord | null>(null)
 const appealReason = ref('')
 const fileList = ref([])
 
-onMounted(async () => {
+const fetchHistory = async () => {
   try {
     const res = await getMyHistory()
     history.value = Array.isArray(res) ? res : (res as any).data || []
   } catch (error) {
     console.error(error)
   }
+}
+
+onMounted(() => {
+  fetchHistory()
 })
 
 const handleAppeal = (record: ReservationRecord) => {
@@ -104,6 +122,36 @@ const handleAppeal = (record: ReservationRecord) => {
   appealReason.value = ''
   fileList.value = []
   appealVisible.value = true
+}
+
+const handleCancel = (record: ReservationRecord) => {
+  Modal.confirm({
+    title: '确认取消预约',
+    content: `确定要取消 ${getSlotText(record.slot)} 的座位预约吗？`,
+    onOk: async () => {
+      try {
+        await releaseSeat(record.id)
+        message.success('预约已取消')
+        fetchHistory()
+      } catch (e) {}
+    }
+  })
+}
+
+const formatTimeRange = (record: ReservationRecord) => {
+  if (!record.startTime) return ''
+  const start = dayjs(record.startTime).format('YYYY-MM-DD HH:mm')
+  const end = dayjs(record.endTime).format('HH:mm')
+  return `${start} ~ ${end}`
+}
+
+const getSlotText = (slot?: string) => {
+  switch (slot) {
+    case 'morning': return '上午'
+    case 'afternoon': return '下午'
+    case 'evening': return '晚间'
+    default: return '普通'
+  }
 }
 
 const submitAppeal = async () => {
@@ -130,30 +178,36 @@ const submitAppeal = async () => {
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'active': return 'blue'
-    case 'completed': return 'green'
+    case 'reserved': return 'blue'
+    case 'checked_in': return 'green'
+    case 'completed': return 'gray'
     case 'violation': return 'red'
     case 'cancelled': return 'gray'
+    case 'away': return 'orange'
     default: return 'blue'
   }
 }
 
 const getStatusText = (status: string) => {
   switch (status) {
-    case 'active': return '进行中'
+    case 'reserved': return '已预约'
+    case 'checked_in': return '使用中'
     case 'completed': return '已完成'
     case 'violation': return '违规'
     case 'cancelled': return '已取消'
+    case 'away': return '暂离'
     default: return status
   }
 }
 
 const getStatusIcon = (status: string) => {
   switch (status) {
-    case 'active': return ClockCircleOutlined
+    case 'reserved': return ClockCircleOutlined
+    case 'checked_in': return PlayCircleOutlined
     case 'completed': return CheckCircleOutlined
     case 'violation': return ExclamationCircleOutlined
-    case 'cancelled': return CloseCircleOutlined
+    case 'cancelled': return StopOutlined
+    case 'away': return ClockCircleOutlined
     default: return ClockCircleOutlined
   }
 }

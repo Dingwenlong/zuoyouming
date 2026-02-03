@@ -38,7 +38,7 @@ public class SeatController {
     @Operation(summary = "获取所有座位列表", description = "支持区域筛选")
     @GetMapping
     public Result<List<Seat>> list(@Parameter(description = "区域 (A区/B区...)", required = false) @RequestParam(required = false) String area) {
-        return Result.success(seatService.list(new LambdaQueryWrapper<Seat>()
+        return Result.success(seatService.listWithSlotStatus(new LambdaQueryWrapper<Seat>()
                 .eq(area != null, Seat::getArea, area)
                 .eq(Seat::getDeleted, 0)));
     }
@@ -46,7 +46,7 @@ public class SeatController {
     @Operation(summary = "获取座位地图数据", description = "包含坐标信息的座位列表")
     @GetMapping("/map")
     public Result<List<Seat>> getMap() {
-        return Result.success(seatService.list(new LambdaQueryWrapper<Seat>()
+        return Result.success(seatService.listWithSlotStatus(new LambdaQueryWrapper<Seat>()
                 .eq(Seat::getDeleted, 0)));
     }
 

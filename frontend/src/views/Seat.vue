@@ -85,6 +85,16 @@
                   <div class="seat-info">
                     <h3>{{ seat.seatNo }}</h3>
                     <a-tag :color="getStatusColor(seat.status)">{{ getStatusText(seat.status) }}</a-tag>
+                    <!-- 3段式状态条 -->
+                    <div class="slot-bar">
+                      <div 
+                        v-for="slot in ['morning', 'afternoon', 'evening']" 
+                        :key="slot"
+                        class="slot-dot"
+                        :style="{ backgroundColor: getSlotColor(seat, slot) }"
+                        v-tooltip="getSlotTooltip(slot)"
+                      ></div>
+                    </div>
                   </div>
                   <template #actions>
                     <span v-if="seat.status === 'available'" @click="handleBook(seat)">预约</span>
@@ -137,11 +147,12 @@
         </a-form-item>
         
         <a-form-item label="预约时段" required>
-          <a-radio-group v-model:value="bookingForm.slot">
-            <a-radio value="morning">上午 (08:00-12:00)</a-radio>
-            <a-radio value="afternoon">下午 (13:00-17:00)</a-radio>
-            <a-radio value="evening">晚间 (18:00-22:00)</a-radio>
-          </a-radio-group>
+          <a-checkbox-group v-model:value="bookingForm.slots">
+            <a-checkbox value="morning" :disabled="isSlotDisabled('morning')">上午 (08:00-12:00)</a-checkbox>
+            <a-checkbox value="afternoon" :disabled="isSlotDisabled('afternoon')">下午 (13:00-17:00)</a-checkbox>
+            <a-checkbox value="evening" :disabled="isSlotDisabled('evening')">晚间 (18:00-22:00)</a-checkbox>
+          </a-checkbox-group>
+          <p v-if="allSlotsDisabled" class="text-error mt-2">今日预约已结束</p>
         </a-form-item>
 
         <a-alert
@@ -151,9 +162,10 @@
         >
           <template #description>
             <ul style="padding-left: 20px; margin: 0;">
-              <li>预约后请在15分钟内签到</li>
-              <li>违约3次将被加入黑名单</li>
-              <li>最长保留4小时</li>
+              <li>起始时间前后15分钟内必须完成签到</li>
+              <li>如需取消，请在起始时间15分钟前办理</li>
+              <li>违规取消或超时未签到将扣除10信用分</li>
+              <li>违约多次将被限制预约权限</li>
             </ul>
           </template>
         </a-alert>
@@ -205,7 +217,29 @@ const selectedSeat = ref<Seat | null>(null)
 const isMobile = ref(false)
 const bookingLoading = ref(false)
 const bookingForm = reactive({
-  slot: 'morning'
+  slots: [] as string[]
+})
+
+const isSlotDisabled = (slot: string) => {
+  const now = new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTime = currentHour * 60 + currentMinute
+
+  // 如果该时段已被占用，也禁用
+  if (selectedSeat.value?.slotStatuses?.[slot] && selectedSeat.value.slotStatuses[slot] !== 'available') {
+    return true
+  }
+
+  // 设定时段结束时间
+  if (slot === 'morning') return currentTime >= 12 * 60 // 12:00 以后禁用
+  if (slot === 'afternoon') return currentTime >= 17 * 60 // 17:00 以后禁用
+  if (slot === 'evening') return currentTime >= 22 * 60 // 22:00 以后禁用
+  return false
+}
+
+const allSlotsDisabled = computed(() => {
+  return isSlotDisabled('morning') && isSlotDisabled('afternoon') && isSlotDisabled('evening')
 })
 
 const checkMobile = () => {
@@ -293,6 +327,28 @@ const getSeatIcon = (status: string) => {
   }
 }
 
+const getSlotColor = (seat: Seat, slot: string) => {
+  const status = seat.slotStatuses?.[slot] || 'available'
+  switch (status) {
+    case 'available': return '#10b981'
+    case 'reserved': return '#3b82f6'
+    case 'checked_in':
+    case 'away':
+    case 'occupied': return '#ef4444'
+    case 'maintenance': return '#64748b'
+    default: return '#e2e8f0'
+  }
+}
+
+const getSlotTooltip = (slot: string) => {
+  switch (slot) {
+    case 'morning': return '上午'
+    case 'afternoon': return '下午'
+    case 'evening': return '晚间'
+    default: return ''
+  }
+}
+
 const mapSeats = computed<MapSeat[]>(() => {
   return filteredSeats.value
     .filter(seat => seat.id !== undefined)
@@ -304,7 +360,8 @@ const mapSeats = computed<MapSeat[]>(() => {
         x: seat.x || 100 + (index % 6) * 100,
         y: seat.y || 100 + Math.floor(index / 6) * 80,
         status: seat.status,
-        type: 'normal'
+        type: 'normal',
+        slotStatuses: seat.slotStatuses
       }
     })
 })
@@ -335,6 +392,17 @@ const handleBook = (seat: Seat) => {
     return
   }
   selectedSeat.value = seat
+  
+  // 设置默认时段为第一个可用的时段
+  bookingForm.slots = []
+  if (!isSlotDisabled('morning')) {
+    bookingForm.slots.push('morning')
+  } else if (!isSlotDisabled('afternoon')) {
+    bookingForm.slots.push('afternoon')
+  } else if (!isSlotDisabled('evening')) {
+    bookingForm.slots.push('evening')
+  }
+  
   isModalVisible.value = true
 }
 
@@ -391,7 +459,7 @@ const handleSetFaulty = async () => {
 }
 
 const confirmBooking = async () => {
-  if (!bookingForm.slot) {
+  if (!bookingForm.slots || bookingForm.slots.length === 0) {
     message.warning('请选择预约时段')
     return
   }
@@ -401,25 +469,45 @@ const confirmBooking = async () => {
     if (selectedSeat.value) {
       const res = await createReservation({
         seatId: selectedSeat.value.id!,
-        slot: bookingForm.slot
+        slots: bookingForm.slots
       })
       
-      const reservationId = (res as any).data || (res as any).id
+      const resData = (res as any).data
       
-      selectedSeat.value.status = 'occupied'
-      // 触发全局倒计时
-      if (reservationId) {
-        userStore.setReservation(reservationId, selectedSeat.value.id!, selectedSeat.value.seatNo)
+      if (resData && resData.id) {
+        // 更新座位状态 (如果是当前时段，则设为 occupied)
+        const currentSlot = getCurrentSlot()
+        if (bookingForm.slots.includes(currentSlot)) {
+          selectedSeat.value.status = 'occupied'
+        }
+        
+        // 触发全局倒计时 (针对第一个时段)
+        userStore.setReservation(
+          resData.id, 
+          selectedSeat.value.id!, 
+          selectedSeat.value.seatNo,
+          new Date(resData.startTime).getTime(),
+          new Date(resData.deadline).getTime()
+        )
       }
       
       message.success(`预约成功！请在规定时间内签到。`)
       isModalVisible.value = false
+      fetchSeats() // 刷新列表以获取最新的 slotStatuses
     }
   } catch (error) {
-    message.error('预约失败')
+    message.error((error as any).response?.data?.msg || '预约失败')
   } finally {
     bookingLoading.value = false
   }
+}
+
+const getCurrentSlot = () => {
+  const hour = new Date().getHours()
+  if (hour >= 8 && hour < 12) return 'morning'
+  if (hour >= 13 && hour < 17) return 'afternoon'
+  if (hour >= 18 && hour < 22) return 'evening'
+  return ''
 }
 </script>
 
@@ -473,10 +561,29 @@ const confirmBooking = async () => {
   font-size: 16px;
 }
 
+.slot-bar {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.slot-dot {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #e2e8f0;
+}
+
 .admin-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.text-error {
+  color: #ff4d4f;
+  font-size: 12px;
 }
 </style>

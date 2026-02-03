@@ -30,6 +30,10 @@ public class Seat implements Serializable {
     
     @Schema(description = "状态: available, occupied, maintenance", example = "available")
     private String status; 
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    @Schema(description = "各时段状态 (morning, afternoon, evening)")
+    private java.util.Map<String, String> slotStatuses;
     
     @Schema(description = "X坐标")
     @JsonProperty("x")

@@ -18,7 +18,7 @@ export function getDashboardStats() {
   })
 }
 
-export function getHeatmapData() {
+export function getHeatmapData(date?: string, simulate: boolean = true) {
   if (USE_MOCK) {
     const hours = ['8:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
     const days = ['A区', 'B区', 'C区', 'D区', 'E区']
@@ -31,14 +31,16 @@ export function getHeatmapData() {
   }
   return request({
     url: '/stats/heatmap',
-    method: 'get'
+    method: 'get',
+    params: { date, simulate }
   })
 }
 
-export function getCongestionData() {
+export function getCongestionData(date?: string, simulate: boolean = true) {
   return request({
     url: '/stats/congestion',
-    method: 'get'
+    method: 'get',
+    params: { date, simulate }
   })
 }
 

@@ -139,4 +139,47 @@ public class SeatService extends ServiceImpl<SeatMapper, Seat> {
         
         return Result.success(success);
     }
+
+    public List<Seat> listWithSlotStatus(LambdaQueryWrapper<Seat> queryWrapper) {
+        List<Seat> seats = this.list(queryWrapper);
+        if (seats.isEmpty()) return seats;
+
+        // 获取今天的所有活跃预约
+        List<com.library.seat.modules.reservation.entity.Reservation> reservations = reservationService.list(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.library.seat.modules.reservation.entity.Reservation>()
+                .in(com.library.seat.modules.reservation.entity.Reservation::getStatus, "reserved", "checked_in", "away")
+                .eq(com.library.seat.modules.reservation.entity.Reservation::getDeleted, 0));
+
+        // 建立 座位ID -> 时段 -> 状态 的映射
+        Map<Long, Map<String, String>> seatSlotMap = new HashMap<>();
+        for (com.library.seat.modules.reservation.entity.Reservation res : reservations) {
+            seatSlotMap.computeIfAbsent(res.getSeatId(), k -> new HashMap<>())
+                    .put(res.getSlot(), res.getStatus());
+        }
+
+        for (Seat seat : seats) {
+            Map<String, String> slotStatuses = new HashMap<>();
+            Map<String, String> reservedSlots = seatSlotMap.getOrDefault(seat.getId(), new HashMap<>());
+            
+            slotStatuses.put("morning", reservedSlots.getOrDefault("morning", "available"));
+            slotStatuses.put("afternoon", reservedSlots.getOrDefault("afternoon", "available"));
+            slotStatuses.put("evening", reservedSlots.getOrDefault("evening", "available"));
+            
+            // 如果座位本身在维护，则所有时段都是 maintenance
+            if ("maintenance".equals(seat.getStatus())) {
+                slotStatuses.put("morning", "maintenance");
+                slotStatuses.put("afternoon", "maintenance");
+                slotStatuses.put("evening", "maintenance");
+            }
+            
+            seat.setSlotStatuses(slotStatuses);
+        }
+        return seats;
+    }
+
+    public void updateStatus(Long seatId, String status) {
+        this.update(new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Seat>()
+                .set(Seat::getStatus, status)
+                .eq(Seat::getId, seatId));
+    }
 }

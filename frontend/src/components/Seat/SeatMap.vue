@@ -74,6 +74,23 @@
             pointer-events="none"
             class="seat-label"
           >{{ seat.label }}</text>
+
+          <!-- 3段式时段状态条 -->
+          <g :transform="`translate(${seat.x}, ${seat.y + seatHeight + 4})`">
+            <rect
+              v-for="(slot, index) in ['morning', 'afternoon', 'evening']"
+              :key="slot"
+              :x="index * (seatWidth / 3)"
+              y="0"
+              :width="seatWidth / 3 - 1"
+              :height="4"
+              :rx="1"
+              :fill="getSlotColor(seat, slot)"
+              class="slot-segment"
+            >
+              <title>{{ getSlotTooltip(slot) }}: {{ getStatusText(seat.slotStatuses?.[slot]) }}</title>
+            </rect>
+          </g>
         </g>
       </g>
     </svg>
@@ -105,6 +122,7 @@ export interface Seat {
   y: number
   status: 'available' | 'occupied' | 'maintenance'
   type?: 'window' | 'power' | 'normal'
+  slotStatuses?: Record<string, string>
 }
 
 const props = defineProps<{
@@ -151,6 +169,39 @@ const getSeatColor = (seat: Seat) => {
     case 'occupied': return '#dc2626' // 鲜红色
     case 'maintenance': return '#475569' // 深灰色
     default: return '#64748b'
+  }
+}
+
+const getSlotColor = (seat: Seat, slot: string) => {
+  const status = seat.slotStatuses?.[slot] || 'available'
+  switch (status) {
+    case 'available': return '#10b981' // 绿色
+    case 'reserved': return '#3b82f6' // 蓝色 (预约未签到)
+    case 'checked_in':
+    case 'away':
+    case 'occupied': return '#ef4444' // 红色 (已签到/占用)
+    case 'maintenance': return '#64748b' // 灰色
+    default: return '#e2e8f0'
+  }
+}
+
+const getSlotTooltip = (slot: string) => {
+  switch (slot) {
+    case 'morning': return '上午 (08:00-12:00)'
+    case 'afternoon': return '下午 (13:00-17:00)'
+    case 'evening': return '晚间 (18:00-22:00)'
+    default: return ''
+  }
+}
+
+const getStatusText = (status?: string) => {
+  switch (status) {
+    case 'available': return '空闲'
+    case 'reserved': return '已预约'
+    case 'checked_in': return '使用中'
+    case 'away': return '暂离'
+    case 'maintenance': return '维护中'
+    default: return '空闲'
   }
 }
 

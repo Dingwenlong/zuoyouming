@@ -11,8 +11,9 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'configValue'">
             <a-input-number 
-              v-if="record.configKey === 'violation_time' || record.configKey === 'min_credit_score'"
-              v-model:value="record.configValue" 
+              v-if="['violation_time', 'min_credit_score', 'release_buffer_time', 'checkin_before_window', 'checkin_after_window'].includes(record.configKey)"
+              :value="Number(record.configValue)"
+              @update:value="(val: number) => record.configValue = String(val)"
               style="width: 100%"
               :min="0"
             />
@@ -21,6 +22,16 @@
               :checked="record.configValue === 'true'"
               @update:checked="(val: boolean) => record.configValue = String(val)"
             />
+            <div v-else-if="record.configKey === 'library_latitude' || record.configKey === 'library_longitude'" class="coord-input">
+              <a-input-number 
+                :value="Number(record.configValue)"
+                @update:value="(val: number) => record.configValue = String(val)"
+                style="flex: 1"
+                :step="0.000001"
+                :precision="6"
+              />
+              <a-button type="primary" size="small" @click="getCurrentCoord(record)">获取当前</a-button>
+            </div>
             <a-input v-else v-model:value="record.configValue" />
           </template>
           <template v-else-if="column.key === 'action'">
@@ -71,6 +82,27 @@ const handleUpdate = async (record: SysConfig) => {
   }
 }
 
+const getCurrentCoord = (record: SysConfig) => {
+  if (!navigator.geolocation) {
+    message.error('浏览器不支持地理定位')
+    return
+  }
+  
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      if (record.configKey === 'library_latitude') {
+        record.configValue = String(position.coords.latitude)
+      } else {
+        record.configValue = String(position.coords.longitude)
+      }
+      message.success('已获取当前坐标，请点击保存')
+    },
+    (err) => {
+      message.error('定位失败: ' + err.message)
+    }
+  )
+}
+
 onMounted(() => {
   fetchConfigs()
 })
@@ -79,5 +111,10 @@ onMounted(() => {
 <style scoped>
 .config-container {
   padding: 24px;
+}
+.coord-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 </style>

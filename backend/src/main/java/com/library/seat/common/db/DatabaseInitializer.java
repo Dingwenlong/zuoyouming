@@ -95,6 +95,23 @@ public class DatabaseInitializer {
                     "UNIQUE KEY `uk_seat_no` (`seat_no`)" +
                     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='座位表'");
 
+            // 初始化默认座位 (如果表为空)
+            try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM sys_seat")) {
+                if (rs.next() && rs.getInt(1) == 0) {
+                    log.info("Inserting initial test seats");
+                    String[] initialSeats = {
+                        "INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES ('A-01', 'A区', '靠窗', 'available', 100, 100)",
+                        "INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES ('A-02', 'A区', '标准', 'available', 220, 100)",
+                        "INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES ('A-03', 'A区', '插座', 'available', 340, 100)",
+                        "INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES ('B-01', 'B区', '靠窗', 'available', 100, 250)",
+                        "INSERT INTO `sys_seat` (`seat_no`, `area`, `type`, `status`, `x_coord`, `y_coord`) VALUES ('B-02', 'B区', '标准', 'available', 220, 250)"
+                    };
+                    for (String sql : initialSeats) {
+                        stmt.execute(sql);
+                    }
+                }
+            }
+
             // 4. 创建预约记录表
             log.info("Checking/Creating table: sys_reservation");
             stmt.execute("CREATE TABLE IF NOT EXISTS `sys_reservation` (" +
@@ -198,7 +215,12 @@ public class DatabaseInitializer {
             stmt.execute("REPLACE INTO `sys_config` (id, config_key, config_value, config_name) VALUES " +
                     "(1, 'violation_time', '30', '预约签到截止时间(分钟)'), " +
                     "(2, 'min_credit_score', '60', '预约所需最低信用分'), " +
-                    "(3, 'message_square_enabled', 'true', '消息广场是否允许发言')");
+                    "(3, 'message_square_enabled', 'true', '消息广场是否允许发言'), " +
+                    "(4, 'library_latitude', '0', '图书馆纬度'), " +
+                    "(5, 'library_longitude', '0', '图书馆经度'), " +
+                    "(6, 'release_buffer_time', '15', '退座截止时间(分钟)'), " +
+                    "(7, 'checkin_before_window', '15', '预约起始前可签到时间(分钟)'), " +
+                    "(8, 'checkin_after_window', '15', '预约起始后可签到时间(分钟)')");
 
             // 10. 创建系统菜单表
             log.info("Checking/Creating table: sys_menu");

@@ -25,4 +25,14 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
             return defaultValue;
         }
     }
+
+    @Override
+    public double getDoubleValue(String key, double defaultValue) {
+        try {
+            String value = getValue(key, null);
+            return value != null ? Double.parseDouble(value) : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
 }
