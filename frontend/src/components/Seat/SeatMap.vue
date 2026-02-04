@@ -151,6 +151,19 @@ const dynamicMapSize = computed(() => {
 
 const selectedSeatId = ref<number | null>(null)
 
+const isSlotPast = (slot: string) => {
+  const now = new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTime = currentHour * 60 + currentMinute
+
+  // 设定时段结束时间
+  if (slot === 'morning') return currentTime >= 12 * 60 // 12:00 以后
+  if (slot === 'afternoon') return currentTime >= 17 * 60 // 17:00 以后
+  if (slot === 'evening') return currentTime >= 22 * 60 // 22:00 以后
+  return false
+}
+
 const transform = reactive({
   x: 0,
   y: 0,
@@ -173,6 +186,7 @@ const getSeatColor = (seat: Seat) => {
 }
 
 const getSlotColor = (seat: Seat, slot: string) => {
+  if (isSlotPast(slot)) return '#bfbfbf' // 已过时段显示为灰色
   const status = seat.slotStatuses?.[slot] || 'available'
   switch (status) {
     case 'available': return '#10b981' // 绿色

@@ -197,6 +197,9 @@ public class AuthController {
         if (request.getPassword() == null || request.getPassword().length() < 6) {
             return Result.error(400, "密码长度不能少于6位");
         }
+        if (request.getPhone() == null || request.getPhone().isEmpty()) {
+            return Result.error(400, "手机号不能为空");
+        }
 
         // 2. Check if user exists
         long count = userDetailsService.count(new LambdaQueryWrapper<SysUser>()
@@ -205,10 +208,18 @@ public class AuthController {
             return Result.error(400, "用户名已存在，请直接登录");
         }
 
-        // 3. Create user
+        // 3. Check if phone exists (Uniqueness validation)
+        long phoneCount = userDetailsService.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getPhone, request.getPhone()));
+        if (phoneCount > 0) {
+            return Result.error(400, "该手机号已被注册");
+        }
+
+        // 4. Create user
         SysUser user = new SysUser();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setPhone(request.getPhone());
         user.setRole("student");
         user.setStatus("active");
         user.setCreditScore(100);
@@ -219,7 +230,7 @@ public class AuthController {
 
         userDetailsService.save(user);
 
-        // 4. Auto login (Generate Token)
+        // 5. Auto login (Generate Token)
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
         String token = jwtUtils.generateToken(userDetails);
 
@@ -232,6 +243,29 @@ public class AuthController {
         data.put("userInfo", user);
 
         return Result.success(data);
+    }
+
+    @Operation(summary = "完善个人信息", description = "更新当前登录用户的真实姓名和手机号")
+    @PutMapping("/profile")
+    public Result<Boolean> updateProfile(@RequestBody SysUser user) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        SysUser currentUser = userDetailsService.getOne(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, username));
+        
+        if (currentUser == null) {
+            return Result.error("用户不存在");
+        }
+
+        // 仅允许更新特定字段
+        if (user.getRealName() != null) {
+            currentUser.setRealName(user.getRealName());
+        }
+        if (user.getPhone() != null) {
+            currentUser.setPhone(user.getPhone());
+        }
+        currentUser.setUpdateTime(new java.util.Date());
+
+        return Result.success(userDetailsService.updateById(currentUser));
     }
 
     @Schema(description = "登录请求参数")
@@ -267,6 +301,9 @@ public class AuthController {
         @Schema(description = "密码", example = "password123", required = true)
         private String password;
 
+        @Schema(description = "手机号", example = "13800138000", required = true)
+        private String phone;
+
         public String getUsername() {
             return username;
         }
@@ -281,6 +318,14 @@ public class AuthController {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+
+        public String getPhone() {
+            return phone;
+        }
+
+        public void setPhone(String phone) {
+            this.phone = phone;
         }
     }
 

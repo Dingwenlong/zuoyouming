@@ -19,7 +19,8 @@ const mockConfigs: SysConfig[] = [
   { id: 5, configKey: 'library_longitude', configValue: '0', configName: '图书馆经度' },
   { id: 6, configKey: 'release_buffer_time', configValue: '15', configName: '退座截止时间(分钟)' },
   { id: 7, configKey: 'checkin_before_window', configValue: '15', configName: '预约起始前可签到时间(min)' },
-  { id: 8, configKey: 'checkin_after_window', configValue: '15', configName: '预约起始后可签到时间(min)' }
+  { id: 8, configKey: 'checkin_after_window', configValue: '15', configName: '预约起始后可签到时间(min)' },
+  { id: 9, configKey: 'late_reservation_grace_period', configValue: '5', configName: '过时预约签到宽限时间(min)' }
 ]
 
 export function getConfigs() {

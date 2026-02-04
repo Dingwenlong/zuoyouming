@@ -1,12 +1,5 @@
 package com.library.seat.modules.sys.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.library.seat.common.Result;
-import com.library.seat.modules.sys.entity.SysLog;
-import com.library.seat.modules.sys.service.SysLogService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -15,10 +8,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.library.seat.common.Result;
+import com.library.seat.modules.sys.entity.SysLog;
+import com.library.seat.modules.sys.service.SysLogService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 @Tag(name = "系统日志", description = "操作日志管理接口")
 @RestController
 @RequestMapping("/api/v1/logs")
-@PreAuthorize("hasAuthority('admin')")
+@PreAuthorize("hasAnyAuthority('admin', 'librarian', 'student', 'guest')")
 public class SysLogController {
 
     @Autowired

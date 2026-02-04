@@ -2,13 +2,13 @@
   <div class="page-container">
     <a-card :bordered="false" class="profile-card">
       <template #title>
-        <span class="card-title">{{ isNewUser ? '完善个人信息' : '个人信息' }}</span>
+        <span class="card-title">个人信息配置</span>
       </template>
       
       <a-alert
         v-if="isNewUser"
-        message="新用户提醒"
-        description="欢迎加入！请先完善您的个人信息，绑定手机号并设置密码后方可使用系统功能。"
+        message="完善信息提醒"
+        description="欢迎加入！请先完善您的真实姓名，完成后方可使用系统功能。"
         type="warning"
         show-icon
         class="mb-6"
@@ -54,43 +54,14 @@
               </a-col>
               <a-col :span="12">
                 <a-form-item label="手机号" name="phone">
-                  <a-input v-model:value="formState.phone" placeholder="请输入手机号" :disabled="!isNewUser && !!userInfo?.phone" />
+                  <a-input v-model:value="formState.phone" placeholder="请输入手机号" disabled />
                 </a-form-item>
               </a-col>
             </a-row>
 
-            <!-- 仅新用户需要验证手机和设置密码 -->
-            <template v-if="isNewUser">
-              <a-form-item label="手机验证码" name="verifyCode">
-                <div class="flex gap-2">
-                  <a-input v-model:value="formState.verifyCode" placeholder="请输入验证码" />
-                  <a-button 
-                    :disabled="countdown > 0" 
-                    @click="sendCode"
-                    :loading="sending"
-                  >
-                    {{ countdown > 0 ? `${countdown}s 后重发` : '获取验证码' }}
-                  </a-button>
-                </div>
-              </a-form-item>
-
-              <a-row :gutter="24">
-                <a-col :span="12">
-                  <a-form-item label="设置登录密码" name="password">
-                    <a-input-password v-model:value="formState.password" placeholder="6-20位字符" />
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item label="确认密码" name="confirmPassword">
-                    <a-input-password v-model:value="formState.confirmPassword" placeholder="再次输入密码" />
-                  </a-form-item>
-                </a-col>
-              </a-row>
-            </template>
-
             <a-form-item class="mt-4">
               <a-button type="primary" html-type="submit" :loading="loading" size="large">
-                {{ isNewUser ? '提交绑定' : '保存修改' }}
+                保存信息
               </a-button>
             </a-form-item>
           </a-form>
@@ -107,6 +78,7 @@ import { useUserStore } from '../../stores/user'
 import { message } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { useRouter } from 'vue-router'
+import { updateProfile } from '../../api/auth'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -115,115 +87,44 @@ const userInfo = computed(() => userStore.userInfo)
 
 const formRef = ref()
 const loading = ref(false)
-const sending = ref(false)
-const countdown = ref(0)
-let timer: number | null = null
-
-// 模拟验证码
-let validCode = ''
-let codeExpireTime = 0
 
 const formState = reactive({
   studentId: '',
   realName: '',
   alias: '',
-  phone: '',
-  verifyCode: '',
-  password: '',
-  confirmPassword: ''
+  phone: ''
 })
-
-const validateConfirmPassword = async (_rule: Rule, value: string) => {
-  if (value === '') {
-    return Promise.reject('请再次输入密码')
-  } else if (value !== formState.password) {
-    return Promise.reject('两次输入密码不一致')
-  } else {
-    return Promise.resolve()
-  }
-}
 
 const rules = computed(() => {
   const baseRules: Record<string, Rule[]> = {
     alias: [{ required: true, message: '请输入昵称' }],
-    phone: [
-      { required: true, message: '请输入手机号' },
-      { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号' }
-    ]
-  }
-
-  if (isNewUser.value) {
-    return {
-      ...baseRules,
-      studentId: [{ required: true, message: '请输入学号' }],
-      realName: [{ required: true, message: '请输入真实姓名' }],
-      verifyCode: [{ required: true, message: '请输入验证码' }],
-      password: [
-        { required: true, message: '请输入密码' },
-        { min: 6, max: 20, message: '密码长度需在6-20位之间' }
-      ],
-      confirmPassword: [
-        { required: true, validator: validateConfirmPassword, trigger: 'change' }
-      ]
-    }
+    realName: [{ required: true, message: '请输入真实姓名' }]
   }
 
   return baseRules
 })
 
-const sendCode = async () => {
-  try {
-    await formRef.value.validateFields(['phone'])
-    sending.value = true
-    
-    // 模拟发送
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    validCode = Math.floor(100000 + Math.random() * 900000).toString()
-    codeExpireTime = Date.now() + 2 * 60 * 1000
-    
-    message.success(`验证码已发送: ${validCode} (有效期2分钟)`)
-    
-    countdown.value = 120
-    timer = window.setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearInterval(timer!)
-        timer = null
-      }
-    }, 1000)
-    
-  } catch (error) {
-    // 校验失败
-  } finally {
-    sending.value = false
-  }
-}
-
 const handleFinish = async (values: any) => {
-  if (isNewUser.value) {
-    // 校验验证码
-    if (Date.now() > codeExpireTime) {
-      message.error('验证码已过期，请重新获取')
-      return
-    }
-    if (values.verifyCode !== validCode) {
-      message.error('验证码错误')
-      return
-    }
-  }
-
   loading.value = true
   try {
-    // 模拟API请求
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 准备更新数据
+    const updatedInfo = {
+      realName: values.realName,
+      phone: userInfo.value?.phone || '', // 手机号已在注册时绑定，保持不变
+      username: userInfo.value?.username // 保持登录账号不变
+    }
+
+    // 调用后端接口保存
+    await updateProfile(updatedInfo)
     
+    // 更新本地状态
     if (isNewUser.value) {
-      userStore.completeBinding()
-      message.success('绑定成功，欢迎使用！')
+      userStore.completeBinding({ ...updatedInfo, username: userInfo.value?.username || '' })
+      message.success('信息完善成功，欢迎使用！')
       // 绑定完成后跳转首页
       router.push('/')
     } else {
+      userStore.completeBinding({ ...updatedInfo, username: userInfo.value?.username || '' })
       message.success('保存成功')
     }
   } catch (error) {
@@ -237,12 +138,10 @@ onMounted(() => {
   if (userInfo.value) {
     // 回填信息 (如果是已有用户)
     formState.alias = userInfo.value.username || ''
-    // 其他字段...
+    formState.studentId = userInfo.value.username || ''
+    formState.realName = userInfo.value.realName || ''
+    formState.phone = userInfo.value.phone || ''
   }
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
 })
 </script>
 

@@ -1,15 +1,17 @@
 package com.library.seat.common.db;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import javax.sql.DataSource;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 
 /**
  * 数据库初始化器
@@ -222,7 +224,8 @@ public class DatabaseInitializer {
                     "(5, 'library_longitude', '0', '图书馆经度'), " +
                     "(6, 'release_buffer_time', '15', '退座截止时间(分钟)'), " +
                     "(7, 'checkin_before_window', '15', '预约起始前可签到时间(分钟)'), " +
-                    "(8, 'checkin_after_window', '15', '预约起始后可签到时间(分钟)')");
+                    "(8, 'checkin_after_window', '15', '预约起始后可签到时间(分钟)'), " +
+                    "(9, 'late_reservation_grace_period', '5', '过时预约签到宽限时间(分钟)')");
 
             // 10. 创建系统菜单表
             log.info("Checking/Creating table: sys_menu");

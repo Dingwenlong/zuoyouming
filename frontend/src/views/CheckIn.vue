@@ -1,67 +1,69 @@
 <template>
   <div class="check-in-page">
     <a-card title="座位签到" :bordered="false">
-      <a-tabs v-model:activeKey="activeTab">
-        <a-tab-pane key="qr" tab="扫码签到">
-          <div class="scan-wrapper">
-            <div v-if="isAdmin" class="admin-qr-generator">
-              <a-divider>管理员：生成测试二维码</a-divider>
-              <div class="generator-controls">
-                <a-select v-model:value="selectedArea" placeholder="选择区域" style="width: 150px">
-                  <a-select-option v-for="area in areas" :key="area" :value="area">{{ area }}</a-select-option>
-                </a-select>
-                <a-select v-model:value="selectedSeatNo" placeholder="选择座位" style="width: 150px" :disabled="!selectedArea">
-                  <a-select-option v-for="no in availableSeatsInArea" :key="no" :value="no">{{ no }}</a-select-option>
-                </a-select>
-              </div>
-              <div v-if="generatedQrText" class="qr-display-area">
-                <div class="qr-code-box" draggable="true" @dragstart="(e) => e.dataTransfer?.setData('text', generatedQrText)">
-                  <qrcode-vue :value="generatedQrText" :size="160" level="H" />
-                  <p class="qr-hint">可拖拽此二维码或点击下方验证</p>
+      <div class="unified-checkin-flow">
+        <!-- 步骤 1: 定位状态 -->
+        <div class="status-section mb-6">
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex items-center">
+              <environment-two-tone :two-tone-color="gpsStatus === 'success' ? '#52c41a' : (gpsStatus === 'error' ? '#ff4d4f' : '#1890ff')" style="font-size: 24px; margin-right: 12px" />
+              <div>
+                <div class="font-bold">{{ gpsMessage }}</div>
+                <div v-if="coords" class="text-xs text-gray-500">
+                  经度: {{ coords.longitude.toFixed(6) }}, 纬度: {{ coords.latitude.toFixed(6) }}
                 </div>
-                <a-button type="dashed" @click="simulateScan" class="mt-2">
-                  <template #icon><select-outlined /></template>
-                  验证该座位签到
-                </a-button>
               </div>
             </div>
+            <a-button size="small" @click="getLocation" :loading="locating">重新定位</a-button>
+          </div>
+        </div>
 
-            <a-alert
-              :message="isAdmin ? '扫码验证' : '请允许使用摄像头权限'"
-              :description="isAdmin ? '扫描二维码或拖入上方生成的二维码' : '请扫描座位上的二维码进行签到'"
-              type="info"
-              show-icon
-              class="mb-4"
-            />
-            <div class="scanner-container" @dragover.prevent @drop.prevent="onDrop">
-              <qr-scanner :allow-file="isAdmin" @scan="handleQrScan" />
+        <!-- 步骤 2: 扫码区域 -->
+        <div class="scan-section" :class="{ 'opacity-50 pointer-events-none': gpsStatus !== 'success' }">
+          <div v-if="isAdmin" class="admin-qr-generator">
+            <a-divider>管理员：生成测试二维码</a-divider>
+            <div class="generator-controls">
+              <a-select v-model:value="selectedArea" placeholder="选择区域" style="width: 150px">
+                <a-select-option v-for="area in areas" :key="area" :value="area">{{ area }}</a-select-option>
+              </a-select>
+              <a-select v-model:value="selectedSeatNo" placeholder="选择座位" style="width: 150px" :disabled="!selectedArea">
+                <a-select-option v-for="no in availableSeatsInArea" :key="no" :value="no">{{ no }}</a-select-option>
+              </a-select>
+            </div>
+            <div v-if="generatedQrText" class="qr-display-area">
+              <div class="qr-code-box" draggable="true" @dragstart="(e) => e.dataTransfer?.setData('text', generatedQrText)">
+                <qrcode-vue :value="generatedQrText" :size="160" level="H" />
+                <p class="qr-hint">可拖拽此二维码到下方扫码区</p>
+              </div>
+              <a-button type="dashed" @click="simulateScan" class="mt-2" :disabled="gpsStatus !== 'success'">
+                <template #icon><select-outlined /></template>
+                模拟扫码并签到
+              </a-button>
             </div>
           </div>
-        </a-tab-pane>
-        
-        <a-tab-pane key="gps" tab="定位签到">
-          <div class="gps-wrapper">
-            <div class="gps-status">
-              <environment-two-tone :two-tone-color="gpsStatus === 'success' ? '#52c41a' : '#1890ff'" style="font-size: 48px" />
-              <p class="mt-4">{{ gpsMessage }}</p>
-              <p v-if="coords" class="coords-text">
-                经度: {{ coords.longitude.toFixed(6) }} <br/>
-                纬度: {{ coords.latitude.toFixed(6) }}
-              </p>
-            </div>
-            
-            <a-button 
-              type="primary" 
-              size="large" 
-              @click="getLocation" 
-              :loading="locating"
-              class="mt-6"
-            >
-              获取定位并签到
-            </a-button>
+
+          <a-alert
+            v-if="gpsStatus !== 'success'"
+            message="等待定位"
+            description="请先完成定位，确保您已在图书馆范围内，随后将自动开启扫码。"
+            type="warning"
+            show-icon
+            class="mb-4"
+          />
+          <a-alert
+            v-else
+            message="请扫描座位二维码"
+            description="定位已成功，请扫描您预约座位上的二维码完成签到。"
+            type="success"
+            show-icon
+            class="mb-4"
+          />
+
+          <div class="scanner-container" @dragover.prevent @drop.prevent="onDrop">
+            <qr-scanner :allow-file="isAdmin" @scan="handleQrScan" />
           </div>
-        </a-tab-pane>
-      </a-tabs>
+        </div>
+      </div>
     </a-card>
   </div>
 </template>
@@ -77,7 +79,6 @@ import { getSeats, type Seat } from '../api/seat'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 
-const activeTab = ref('qr')
 const userStore = useUserStore()
 const router = useRouter()
 const userInfo = computed(() => userStore.userInfo)
@@ -95,18 +96,23 @@ const availableSeatsInArea = computed(() =>
 
 const generatedQrText = computed(() => {
   if (selectedArea.value && selectedSeatNo.value) {
-    return `seat:${selectedArea.value}:${selectedSeatNo.value}`
+    // 匹配后端 ReservationService.java L349 的格式: "Area:A区,SeatNo:A-01"
+    return `Area:${selectedArea.value},SeatNo:${selectedSeatNo.value}`
   }
   return ''
 })
 
 onMounted(async () => {
+  // 1. 获取座位列表
   try {
     const data = await getSeats()
     allSeats.value = data as any
   } catch (e) {
     console.error('Failed to fetch seats', e)
   }
+
+  // 2. 自动开启定位
+  getLocation()
 })
 
 watch(selectedArea, () => {
@@ -132,10 +138,19 @@ const handleQrScan = async (text: string) => {
     message.warning('您当前没有活跃的预约记录')
     return
   }
+
+  if (gpsStatus.value !== 'success' || !coords.value) {
+    message.error('签到失败：请先完成定位')
+    return
+  }
   
   try {
-    await checkIn(reservation.value.id, { qrCode: text })
-    message.success('扫码签到成功')
+    await checkIn(reservation.value.id, { 
+      qrCode: text,
+      lat: coords.value.latitude,
+      lng: coords.value.longitude
+    })
+    message.success('扫码并定位签到成功')
     userStore.checkIn()
     router.push('/dashboard')
   } catch (e: any) {
@@ -146,50 +161,35 @@ const handleQrScan = async (text: string) => {
 // GPS Logic
 const locating = ref(false)
 const gpsStatus = ref<'idle' | 'success' | 'error'>('idle')
-const gpsMessage = ref('请确保您在图书馆范围内 (200米)')
+const gpsMessage = ref('正在检测您的位置...')
 const coords = ref<GeolocationCoordinates | null>(null)
 
 const getLocation = () => {
   if (!navigator.geolocation) {
     message.error('您的浏览器不支持地理定位')
-    return
-  }
-
-  if (!reservation.value) {
-    message.warning('您当前没有活跃的预约记录')
+    gpsStatus.value = 'error'
+    gpsMessage.value = '浏览器不支持定位'
     return
   }
 
   locating.value = true
+  gpsStatus.value = 'idle'
   gpsMessage.value = '正在获取位置...'
 
   navigator.geolocation.getCurrentPosition(
-    async (position) => {
+    (position) => {
       coords.value = position.coords
-      try {
-        await checkIn(reservation.value!.id, { 
-          lat: position.coords.latitude, 
-          lng: position.coords.longitude 
-        })
-        locating.value = false
-        gpsStatus.value = 'success'
-        gpsMessage.value = '定位成功！您已在图书馆范围内并完成签到。'
-        message.success('签到成功')
-        userStore.checkIn()
-        router.push('/dashboard')
-      } catch (e: any) {
-        locating.value = false
-        gpsStatus.value = 'error'
-        gpsMessage.value = e.response?.data?.msg || '签到失败'
-        message.error(gpsMessage.value)
-      }
+      locating.value = false
+      gpsStatus.value = 'success'
+      gpsMessage.value = '定位成功，已在范围内'
     },
     (error) => {
       locating.value = false
       gpsStatus.value = 'error'
       gpsMessage.value = `定位失败: ${error.message}`
-      message.error('定位失败，请检查权限')
-    }
+      message.error('定位失败，请检查定位权限')
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
   )
 }
 </script>
@@ -199,16 +199,61 @@ const getLocation = () => {
   padding: 24px;
 }
 
-.scan-wrapper, .gps-wrapper {
+.unified-checkin-flow {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.flex {
   display: flex;
-  flex-direction: column;
+}
+
+.items-center {
   align-items: center;
-  padding: 20px 0;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.p-4 {
+  padding: 1rem;
+}
+
+.bg-gray-50 {
+  background-color: #f9fafb;
+}
+
+.rounded-lg {
+  border-radius: 0.5rem;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.text-gray-500 {
+  color: #6b7280;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+.mb-6 {
+  margin-bottom: 1.5rem;
+}
+
+.mt-2 {
+  margin-top: 0.5rem;
 }
 
 .admin-qr-generator {
   width: 100%;
-  max-width: 500px;
   margin-bottom: 24px;
   padding: 16px;
   background: #f8f9fa;
@@ -251,36 +296,15 @@ const getLocation = () => {
 
 .scanner-container {
   width: 100%;
-  max-width: 500px;
   border: 2px solid transparent;
   transition: all 0.3s;
 }
 
-.scanner-container:hover {
-  border-color: rgba(24, 144, 255, 0.2);
+.opacity-50 {
+  opacity: 0.5;
 }
 
-.gps-status {
-  text-align: center;
-}
-
-.coords-text {
-  font-size: 12px;
-  color: #999;
-  margin-top: 8px;
-}
-
-.mb-4 {
-  margin-bottom: 16px;
-  width: 100%;
-  max-width: 500px;
-}
-
-.mt-4 {
-  margin-top: 16px;
-}
-
-.mt-6 {
-  margin-top: 24px;
+.pointer-events-none {
+  pointer-events: none;
 }
 </style>

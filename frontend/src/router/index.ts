@@ -43,7 +43,7 @@ const routes: Array<RouteRecordRaw> = [
             path: 'info',
             name: 'ProfileInfo',
             component: () => import('../views/Profile/Info.vue'),
-            meta: { title: '个人信息', roles: ['student', 'librarian', 'admin'] }
+            meta: { title: '个人信息配置', roles: ['student', 'librarian', 'admin'] }
           },
           {
             path: 'history',

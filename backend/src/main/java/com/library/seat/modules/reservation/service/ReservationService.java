@@ -1,5 +1,17 @@
 package com.library.seat.modules.reservation.service;
 
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.library.seat.common.Result;
@@ -11,17 +23,6 @@ import com.library.seat.modules.seat.entity.Seat;
 import com.library.seat.modules.seat.service.SeatService;
 import com.library.seat.modules.sys.entity.SysUser;
 import com.library.seat.modules.sys.service.UserDetailsServiceImpl;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class ReservationService extends ServiceImpl<ReservationMapper, Reservation> {
@@ -206,9 +207,16 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
                 res.setStartTime(startCal.getTime());
                 res.setEndTime(endCal.getTime());
                 
-                // 设置签到截止时间: start_time + checkin_after_window
+                // 设置签到截止时间: 
+                // 1. 标准截止时间: start_time + checkin_after_window
+                // 2. 宽限截止时间: 如果当前预约时已过初始时段，确保有足够的签到时间 (late_reservation_grace_period)
                 int checkInAfter = configService.getIntValue("checkin_after_window", 15);
-                res.setDeadline(new Date(res.getStartTime().getTime() + (long) checkInAfter * 60 * 1000));
+                int gracePeriod = configService.getIntValue("late_reservation_grace_period", 5);
+                
+                long standardDeadline = res.getStartTime().getTime() + (long) checkInAfter * 60 * 1000;
+                long graceDeadline = now.getTime() + (long) gracePeriod * 60 * 1000;
+                
+                res.setDeadline(new Date(Math.max(standardDeadline, graceDeadline)));
                 res.setCreateTime(now);
                 this.save(res);
                 createdReservations.add(res);
@@ -312,7 +320,7 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
             if (nowTime < startTime - (long) beforeWindow * 60 * 1000) {
                 return Result.error("尚未到达签到时间，请在起始时间前" + beforeWindow + "分钟内签到");
             }
-            if (nowTime > startTime + (long) afterWindow * 60 * 1000) {
+            if (reservation.getDeadline() != null && nowTime > reservation.getDeadline().getTime()) {
                 return Result.error("已超过签到截止时间");
             }
         }
@@ -324,38 +332,39 @@ public class ReservationService extends ServiceImpl<ReservationMapper, Reservati
             }
         }
 
-        // 校验位置或扫码
+        // 校验位置和扫码 (必须同时满足)
         if (params != null) {
+            boolean hasLocation = params.containsKey("lat") && params.containsKey("lng");
+            boolean hasQrCode = params.containsKey("qrCode");
+
+            if (!hasLocation || !hasQrCode) {
+                return Result.error("签到失败：必须同时提供位置信息和座位二维码");
+            }
+
             // 1. 定位校验
-            if (params.containsKey("lat") && params.containsKey("lng")) {
-                double userLat = Double.parseDouble(params.get("lat").toString());
-                double userLng = Double.parseDouble(params.get("lng").toString());
-                double libLat = configService.getDoubleValue("library_latitude", 0);
-                double libLng = configService.getDoubleValue("library_longitude", 0);
-                
-                if (libLat != 0 && libLng != 0) {
-                    double distance = calculateDistance(userLat, userLng, libLat, libLng);
-                    if (distance > 200) {
-                        return Result.error(String.format("您距离图书馆太远 (%.1f米)，请到馆后再签到", distance));
-                    }
+            double userLat = Double.parseDouble(params.get("lat").toString());
+            double userLng = Double.parseDouble(params.get("lng").toString());
+            double libLat = configService.getDoubleValue("library_latitude", 0);
+            double libLng = configService.getDoubleValue("library_longitude", 0);
+            
+            if (libLat != 0 && libLng != 0) {
+                double distance = calculateDistance(userLat, userLng, libLat, libLng);
+                if (distance > 200) {
+                    return Result.error(String.format("您距离图书馆太远 (%.1f米)，请到馆后再扫码签到", distance));
                 }
-            } 
+            }
+
             // 2. 扫码校验
-            else if (params.containsKey("qrCode")) {
-                String qrCode = params.get("qrCode").toString();
-                // 预期格式: "Area:A区,SeatNo:A-01"
-                Seat seat = seatService.getById(reservation.getSeatId());
-                if (seat != null) {
-                    String expected = "Area:" + seat.getArea() + ",SeatNo:" + seat.getSeatNo();
-                    if (!expected.equals(qrCode)) {
-                        return Result.error("二维码信息不匹配，请扫描正确的座位二维码");
-                    }
+            String qrCode = params.get("qrCode").toString();
+            Seat seat = seatService.getById(reservation.getSeatId());
+            if (seat != null) {
+                String expected = "Area:" + seat.getArea() + ",SeatNo:" + seat.getSeatNo();
+                if (!expected.equals(qrCode)) {
+                    return Result.error("二维码信息不匹配，请扫描正确的座位二维码");
                 }
-            } else {
-                return Result.error("未提供有效的签到凭证");
             }
         } else {
-            return Result.error("请使用扫码或定位进行签到");
+            return Result.error("请开启定位并扫码进行签到");
         }
 
         // 更新预约状态

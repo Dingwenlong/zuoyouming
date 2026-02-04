@@ -11,7 +11,7 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'configValue'">
             <a-input-number 
-              v-if="['violation_time', 'min_credit_score', 'release_buffer_time', 'checkin_before_window', 'checkin_after_window'].includes(record.configKey)"
+              v-if="['violation_time', 'min_credit_score', 'release_buffer_time', 'checkin_before_window', 'checkin_after_window', 'late_reservation_grace_period'].includes(record.configKey)"
               :value="Number(record.configValue)"
               @update:value="(val: number) => record.configValue = String(val)"
               style="width: 100%"

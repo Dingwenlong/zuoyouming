@@ -125,14 +125,29 @@ export const getMenus = async (role: string): Promise<MenuItem[]> => {
   const data = (res as any).data || res
   
   const adaptMenus = (menus: any[]): MenuItem[] => {
-    return menus.map(m => ({
-      ...m,
-      meta: {
-        title: m.title || m.meta?.title,
-        icon: m.icon || m.meta?.icon
-      },
-      children: m.children ? adaptMenus(m.children) : undefined
-    }))
+    return menus.map(m => {
+      // 解析后端返回的 roles JSON 字符串
+      let rolesArr: string[] = []
+      if (typeof m.roles === 'string' && m.roles.startsWith('[')) {
+        try {
+          rolesArr = JSON.parse(m.roles)
+        } catch (e) {
+          console.error('Failed to parse roles JSON:', m.roles)
+        }
+      } else if (Array.isArray(m.meta?.roles)) {
+        rolesArr = m.meta.roles
+      }
+
+      return {
+        ...m,
+        meta: {
+          title: m.title || m.meta?.title,
+          icon: m.icon || m.meta?.icon,
+          roles: rolesArr
+        },
+        children: m.children ? adaptMenus(m.children) : undefined
+      }
+    })
   }
   
   return adaptMenus(data)

@@ -220,22 +220,26 @@ const bookingForm = reactive({
   slots: [] as string[]
 })
 
-const isSlotDisabled = (slot: string) => {
+const isSlotPast = (slot: string) => {
   const now = new Date()
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
   const currentTime = currentHour * 60 + currentMinute
-
-  // 如果该时段已被占用，也禁用
-  if (selectedSeat.value?.slotStatuses?.[slot] && selectedSeat.value.slotStatuses[slot] !== 'available') {
-    return true
-  }
 
   // 设定时段结束时间
   if (slot === 'morning') return currentTime >= 12 * 60 // 12:00 以后禁用
   if (slot === 'afternoon') return currentTime >= 17 * 60 // 17:00 以后禁用
   if (slot === 'evening') return currentTime >= 22 * 60 // 22:00 以后禁用
   return false
+}
+
+const isSlotDisabled = (slot: string) => {
+  // 如果该时段已被占用，也禁用
+  if (selectedSeat.value?.slotStatuses?.[slot] && selectedSeat.value.slotStatuses[slot] !== 'available') {
+    return true
+  }
+
+  return isSlotPast(slot)
 }
 
 const allSlotsDisabled = computed(() => {
@@ -328,6 +332,7 @@ const getSeatIcon = (status: string) => {
 }
 
 const getSlotColor = (seat: Seat, slot: string) => {
+  if (isSlotPast(slot)) return '#bfbfbf' // 已过时段显示为灰色
   const status = seat.slotStatuses?.[slot] || 'available'
   switch (status) {
     case 'available': return '#10b981'

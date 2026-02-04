@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { type LoginParams, type RegisterParams, type UserInfo, login, register, guestLogin, wechatLogin, logout } from '../api/auth'
 import { getMenus, type MenuItem } from '../api/menu'
 import { getActiveReservation } from '../api/reservation'
@@ -13,8 +13,16 @@ export const useUserStore = defineStore('user', () => {
       : null
   )
   const menus = ref<MenuItem[]>([])
-  // 新用户标记
-  const isNewUser = ref(false)
+  
+  // 是否绑定了个人信息
+  const isInfoBound = computed(() => {
+    if (!userInfo.value) return true // 未登录时不触发重定向
+    if (userInfo.value.role === 'admin' || userInfo.value.role === 'guest') return true
+    return !!(userInfo.value.phone && userInfo.value.realName)
+  })
+
+  // 新用户标记：如果未绑定信息，则视为新用户/需要绑定用户
+  const isNewUser = computed(() => !isInfoBound.value)
 
   function setToken(newToken: string) {
     token.value = newToken
@@ -70,7 +78,6 @@ export const useUserStore = defineStore('user', () => {
     token.value = ''
     userInfo.value = null
     menus.value = []
-    isNewUser.value = false
     clearReservation() // 登出时清除预约
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
@@ -79,10 +86,6 @@ export const useUserStore = defineStore('user', () => {
   async function handleLogin(params: LoginParams) {
     try {
       const res = await login(params)
-      
-      // 模拟新用户逻辑: 如果用户名包含 'new'，则视为新用户
-      const isNew = params.username.includes('new')
-      isNewUser.value = isNew
       
       setToken(res.token)
       setUserInfo(res.userInfo)
@@ -101,9 +104,6 @@ export const useUserStore = defineStore('user', () => {
     try {
       const res = await register(params)
       
-      // 注册用户不标记为新用户，直接进入首页
-      isNewUser.value = false
-      
       setToken(res.token)
       setUserInfo(res.userInfo)
       
@@ -119,9 +119,6 @@ export const useUserStore = defineStore('user', () => {
   async function handleGuestLogin() {
     try {
       const res = await guestLogin()
-      
-      // 访客直接进入首页，不是新用户
-      isNewUser.value = false
       
       setToken(res.token)
       setUserInfo(res.userInfo)
@@ -140,9 +137,6 @@ export const useUserStore = defineStore('user', () => {
     try {
       const res = await wechatLogin(code)
       
-      const isNew = code === 'new_user_code' || Math.random() > 0.5
-      isNewUser.value = isNew
-
       setToken(res.token)
       setUserInfo(res.userInfo)
       await fetchMenus()
@@ -153,9 +147,11 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 完成绑定
-  function completeBinding() {
-    isNewUser.value = false
+  // 完成绑定后更新用户信息
+  function completeBinding(updatedInfo?: Partial<UserInfo>) {
+    if (userInfo.value && updatedInfo) {
+      setUserInfo({ ...userInfo.value, ...updatedInfo })
+    }
   }
 
   async function handleLogout() {

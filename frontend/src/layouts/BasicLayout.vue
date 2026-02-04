@@ -26,7 +26,7 @@
           class="custom-menu"
           @click="handleMenuClick"
         >
-          <sub-menu :menu-info="userStore.menus" />
+          <sub-menu :menu-info="filteredMenus" />
         </a-menu>
       </div>
     </a-layout-sider>
@@ -56,7 +56,7 @@
           class="custom-menu"
           @click="handleMobileMenuClick"
         >
-          <sub-menu :menu-info="userStore.menus" />
+          <sub-menu :menu-info="filteredMenus" />
         </a-menu>
       </div>
     </a-drawer>
@@ -118,7 +118,7 @@
                   <a-menu-item key="profile" @click="router.push('/profile/info')">
                     <user-outlined /> 个人中心
                   </a-menu-item>
-                  <a-menu-item key="history" @click="router.push('/profile/history')">
+                  <a-menu-item v-if="!userStore.isNewUser" key="history" @click="router.push('/profile/history')">
                     <history-outlined /> 预约/签到记录
                   </a-menu-item>
                   <a-menu-divider />
@@ -175,6 +175,44 @@ const route = useRoute()
 const isMobile = ref(false)
 
 const userInfo = computed(() => userStore.userInfo)
+const filteredMenus = computed(() => {
+  const role = userInfo.value?.role || ''
+  
+  // 递归过滤函数
+  const filterByRole = (menus: any[]): any[] => {
+    return menus
+      .filter(menu => {
+        // 1. 检查当前菜单项的权限
+        const allowedRoles = menu.meta?.roles || []
+        if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+          return false
+        }
+        return true
+      })
+      .map(menu => {
+        // 2. 递归处理子菜单
+        if (menu.children && menu.children.length > 0) {
+          return { ...menu, children: filterByRole(menu.children), _hadChildren: true }
+        }
+        return menu
+      })
+      .filter(menu => {
+        // 3. 如果原本有子菜单但过滤后没有了，则隐藏父级目录
+        if (menu._hadChildren && (!menu.children || menu.children.length === 0)) {
+          return false
+        }
+        return true
+      })
+  }
+
+  const menus = filterByRole(userStore.menus)
+
+  if (userStore.isNewUser) {
+    // 强制绑定信息时，只显示个人中心
+    return menus.filter(m => m.path === '/profile')
+  }
+  return menus
+})
 const currentRouteName = computed(() => route.meta.title || route.name)
 const breadcrumbList = computed(() => route.matched.filter(item => item.meta && item.meta.title && item.meta.title !== '首页'))
 

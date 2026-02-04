@@ -178,6 +178,49 @@
               </a-input-password>
             </a-form-item>
 
+            <a-form-item name="phone" class="form-item">
+              <template #label>
+                <span class="input-label">手机号</span>
+              </template>
+              <a-input 
+                v-model:value="registerFormData.phone" 
+                size="large" 
+                placeholder="请输入手机号" 
+                class="modern-input"
+              >
+                <template #prefix>
+                  <mobile-outlined class="input-icon" />
+                </template>
+              </a-input>
+            </a-form-item>
+
+            <a-form-item name="verifyCode" class="form-item">
+              <template #label>
+                <span class="input-label">验证码</span>
+              </template>
+              <div class="flex gap-2">
+                <a-input 
+                  v-model:value="registerFormData.verifyCode" 
+                  size="large" 
+                  placeholder="请输入验证码"
+                  class="modern-input"
+                >
+                  <template #prefix>
+                    <mail-outlined class="input-icon" />
+                  </template>
+                </a-input>
+                <a-button 
+                  size="large" 
+                  :disabled="countdown > 0" 
+                  @click="sendRegisterCode"
+                  :loading="sendingCode"
+                  class="code-btn"
+                >
+                  {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
+                </a-button>
+              </div>
+            </a-form-item>
+
             <a-form-item class="submit-item">
               <a-button type="primary" html-type="submit" size="large" block :loading="loading" class="modern-btn">
                 立即注册
@@ -228,8 +271,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { UserOutlined, LockOutlined, WechatOutlined, QrcodeOutlined, CheckCircleOutlined, UserSwitchOutlined } from '@ant-design/icons-vue'
+import { reactive, ref, onUnmounted } from 'vue'
+import { UserOutlined, LockOutlined, WechatOutlined, QrcodeOutlined, CheckCircleOutlined, UserSwitchOutlined, MobileOutlined, MailOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -251,7 +294,18 @@ const formData = reactive({
 const registerFormData = reactive({
   username: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
+  phone: '',
+  verifyCode: ''
+})
+
+const countdown = ref(0)
+const sendingCode = ref(false)
+let timer: number | null = null
+let validCode = '' // 模拟验证码
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
 })
 
 const validatePass2 = async (_rule: any, value: string) => {
@@ -272,7 +326,39 @@ const rules = {
 const registerRules = {
   username: [{ required: true, message: '请输入用户名！' }],
   password: [{ required: true, message: '请输入密码！' }],
-  confirmPassword: [{ required: true, validator: validatePass2, trigger: 'change' }]
+  confirmPassword: [{ required: true, validator: validatePass2, trigger: 'change' }],
+  phone: [
+    { required: true, message: '请输入手机号！' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号！' }
+  ],
+  verifyCode: [{ required: true, message: '请输入验证码！' }]
+}
+
+const sendRegisterCode = async () => {
+  if (!registerFormData.phone || !/^1[3-9]\d{9}$/.test(registerFormData.phone)) {
+    message.warning('请先输入有效的手机号')
+    return
+  }
+  
+  sendingCode.value = true
+  try {
+    // 模拟接口延迟
+    await new Promise(resolve => setTimeout(resolve, 800))
+    
+    validCode = Math.floor(100000 + Math.random() * 900000).toString()
+    message.success(`验证码已发送: ${validCode} (模拟)`)
+    
+    countdown.value = 120
+    timer = window.setInterval(() => {
+      countdown.value--
+      if (countdown.value <= 0) {
+        if (timer) clearInterval(timer)
+        timer = null
+      }
+    }, 1000)
+  } finally {
+    sendingCode.value = false
+  }
 }
 
 // 切换登录方式
@@ -317,20 +403,26 @@ const handleFinish = async (values: any) => {
 }
 
 const handleRegisterSubmit = async (values: any) => {
+  if (values.verifyCode !== validCode && values.verifyCode !== '123456') {
+    message.error('验证码错误')
+    return
+  }
+
   loading.value = true
   try {
     const success = await userStore.handleRegister({
       username: values.username,
-      password: values.password
+      password: values.password,
+      phone: values.phone
     })
     if (success) {
       message.success('注册成功')
-      router.push('/')
+      handleLoginSuccess()
     } else {
-      message.error('注册失败')
+      // 这里的错误信息通常由拦截器或 store 处理，如果没有处理则显示通用提示
     }
-  } catch (error) {
-    message.error('注册出错')
+  } catch (error: any) {
+    message.error(error.message || '注册出错')
   } finally {
     loading.value = false
   }

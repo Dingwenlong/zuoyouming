@@ -61,6 +61,7 @@
           <template v-else-if="column.key === 'action'">
             <a-space>
               <a @click="handleEdit(record)">编辑</a>
+              <a @click="handleShowQr(record)">二维码</a>
               <a-popconfirm
                 title="确定删除该座位吗？"
                 @confirm="handleDelete(record.id)"
@@ -150,12 +151,33 @@
         placeholder="在此粘贴 JSON 数据"
       />
     </a-modal>
+
+    <!-- 二维码预览弹窗 -->
+    <a-modal
+      v-model:open="qrVisible"
+      title="座位二维码"
+      :footer="null"
+      width="300px"
+      centered
+    >
+      <div class="flex flex-col items-center p-4">
+        <div class="bg-white p-4 rounded shadow-sm mb-4 border border-gray-100">
+          <qrcode-vue :value="qrValue" :size="200" level="H" />
+        </div>
+        <div class="text-center">
+          <p class="text-lg font-bold mb-1">{{ currentSeat?.seatNo }}</p>
+          <p class="text-gray-500">{{ currentSeat?.area }} · {{ currentSeat?.type }}</p>
+          <a-button type="primary" class="mt-4" @click="downloadQr">下载二维码</a-button>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { message, Modal } from 'ant-design-vue'
+import QrcodeVue from 'qrcode.vue'
 import { wsService } from '../../utils/websocket'
 import { 
   getSeats, 
@@ -241,6 +263,32 @@ const rules = {
 const importVisible = ref(false)
 const importing = ref(false)
 const importData = ref('')
+
+// 二维码相关
+const qrVisible = ref(false)
+const currentSeat = ref<Seat | null>(null)
+const qrValue = computed(() => {
+  if (!currentSeat.value) return ''
+  // 匹配后端 ReservationService.java L349 的格式: "Area:A区,SeatNo:A-01"
+  return `Area:${currentSeat.value.area},SeatNo:${currentSeat.value.seatNo}`
+})
+
+const handleShowQr = (record: Seat) => {
+  currentSeat.value = record
+  qrVisible.value = true
+}
+
+const downloadQr = () => {
+  const canvas = document.querySelector('.flex.flex-col.items-center.p-4 canvas') as HTMLCanvasElement
+  if (canvas) {
+    const url = canvas.toDataURL('image/png')
+    const link = document.createElement('a')
+    link.download = `座位二维码_${currentSeat.value?.seatNo}.png`
+    link.href = url
+    link.click()
+    message.success('二维码已开始下载')
+  }
+}
 
 const handleGenerateRandom = () => {
   const areas = ['A区', 'B区', 'C区', 'D区']
@@ -424,5 +472,53 @@ onUnmounted(() => {
 <style scoped>
 .text-red-500 {
   color: #ff4d4f;
+}
+.flex {
+  display: flex;
+}
+.flex-col {
+  flex-direction: column;
+}
+.items-center {
+  align-items: center;
+}
+.justify-center {
+  justify-content: center;
+}
+.p-4 {
+  padding: 1rem;
+}
+.mb-1 {
+  margin-bottom: 0.25rem;
+}
+.mb-4 {
+  margin-bottom: 1rem;
+}
+.mt-4 {
+  margin-top: 1rem;
+}
+.text-lg {
+  font-size: 1.125rem;
+}
+.font-bold {
+  font-weight: 700;
+}
+.text-gray-500 {
+  color: #8c8c8c;
+}
+.rounded {
+  border-radius: 4px;
+}
+.shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.border {
+  border-width: 1px;
+}
+.border-gray-100 {
+  border-color: #f0f0f0;
+}
+.bg-white {
+  background-color: #fff;
 }
 </style>
