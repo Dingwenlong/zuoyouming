@@ -17,7 +17,9 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const mockHistory: ReservationRecord[] = [
   {
     id: 101,
-    seatNumber: 'A-01',
+    seatId: 1,
+    seatNo: 'A-01',
+    slot: 'morning',
     startTime: '2023-10-20 08:00',
     endTime: '2023-10-20 12:00',
     status: 'completed',
@@ -25,7 +27,9 @@ const mockHistory: ReservationRecord[] = [
   },
   {
     id: 102,
-    seatNumber: 'B-05',
+    seatId: 2,
+    seatNo: 'B-05',
+    slot: 'afternoon',
     startTime: '2023-10-18 14:00',
     endTime: '2023-10-18 18:00',
     status: 'violation',
@@ -33,7 +37,9 @@ const mockHistory: ReservationRecord[] = [
   },
   {
     id: 103,
-    seatNumber: 'C-10',
+    seatId: 3,
+    seatNo: 'C-10',
+    slot: 'evening',
     startTime: '2023-10-15 18:00',
     endTime: '2023-10-15 22:00',
     status: 'cancelled',
@@ -41,7 +47,9 @@ const mockHistory: ReservationRecord[] = [
   },
   {
     id: 104,
-    seatNumber: 'A-02',
+    seatId: 4,
+    seatNo: 'A-02',
+    slot: 'morning',
     startTime: '2023-10-22 09:00',
     endTime: '2023-10-22 11:30',
     status: 'active',
