@@ -86,12 +86,67 @@ export function getActiveReservation() {
   })
 }
 
-export function submitAppeal(id: number, data: { reason: string, images?: string[] }) {
+export interface AppealData {
+  reason: string
+  appealType: 'PHONE_DEAD' | 'QR_CODE_DAMAGED' | 'GPS_ERROR' | 'SYSTEM_ERROR' | 'OTHER'
+  images?: string[]
+}
+
+export interface AppealRecord {
+  id: number
+  reservationId: number
+  userId: number
+  appealType: string
+  reason: string
+  images: string
+  status: 'pending' | 'approved' | 'rejected'
+  reply: string
+  creditReturned: number
+  creditAmount: number
+  createTime: string
+  updateTime: string
+  username?: string
+  realName?: string
+  seatNo?: string
+}
+
+export function submitAppeal(id: number, data: AppealData) {
   if (USE_MOCK) {
     return new Promise((resolve) => setTimeout(resolve, 1000))
   }
   return request({
     url: `/reservations/${id}/appeal`,
+    method: 'post',
+    data
+  })
+}
+
+export function getMyAppeals() {
+  if (USE_MOCK) {
+    return Promise.resolve([])
+  }
+  return request<AppealRecord[]>({
+    url: '/reservations/my-appeals',
+    method: 'get'
+  })
+}
+
+export function getAllAppeals() {
+  if (USE_MOCK) {
+    return Promise.resolve([])
+  }
+  return request<AppealRecord[]>({
+    url: '/reservations/appeals',
+    method: 'get'
+  })
+}
+
+export function reviewAppeal(id: number, data: { status: 'approved' | 'rejected', reply: string }) {
+  if (USE_MOCK) {
+    return new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return request({
+    url: `/reservations/appeals/${id}/review`,
     method: 'post',
     data
   })

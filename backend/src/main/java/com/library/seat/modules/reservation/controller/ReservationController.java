@@ -95,7 +95,19 @@ public class ReservationController {
     @PostMapping("/{id}/appeal")
     public Result<Boolean> appeal(@PathVariable Long id, @RequestBody Appeal appeal) {
         appeal.setReservationId(id);
-        return reservationService.appeal(appeal);
+        return reservationService.appeal(appeal, getCurrentUserId());
+    }
+
+    @Operation(summary = "获取我的申诉列表")
+    @GetMapping("/my-appeals")
+    public Result<List<Appeal>> getMyAppeals() {
+        return reservationService.getMyAppeals(getCurrentUserId());
+    }
+
+    @Operation(summary = "获取所有申诉列表（管理员）")
+    @GetMapping("/appeals")
+    public Result<List<Map<String, Object>>> getAllAppeals() {
+        return reservationService.getAllAppeals();
     }
 
     @Operation(summary = "管理员强制释放座位")
