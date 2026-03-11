@@ -103,15 +103,15 @@ const generatedQrText = computed(() => {
 })
 
 onMounted(async () => {
-  // 1. 获取座位列表
-  try {
-    const data = await getSeats()
-    allSeats.value = data as any
-  } catch (e) {
-    console.error('Failed to fetch seats', e)
+  if (isAdmin.value) {
+    try {
+      const data = await getSeats()
+      allSeats.value = data as any
+    } catch (e) {
+      console.error('Failed to fetch seats', e)
+    }
   }
 
-  // 2. 自动开启定位
   getLocation()
 })
 
@@ -181,7 +181,7 @@ const getLocation = () => {
       coords.value = position.coords
       locating.value = false
       gpsStatus.value = 'success'
-      gpsMessage.value = '定位成功，已在范围内'
+      gpsMessage.value = '已获取定位，待服务端校验'
     },
     (error) => {
       locating.value = false

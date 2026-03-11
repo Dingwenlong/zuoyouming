@@ -18,6 +18,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 
 @Tag(name = "预约业务模块", description = "预约、签到、暂离、退座、申诉")
@@ -100,6 +101,7 @@ public class ReservationController {
 
     @Operation(summary = "管理员强制释放座位")
     @PostMapping("/{id}/force-release")
+    @PreAuthorize("hasAnyAuthority('admin', 'librarian')")
     public Result<Boolean> forceRelease(@PathVariable Long id) {
         // In real app, check for admin role here or via Security Config
         return reservationService.forceRelease(id);
@@ -107,6 +109,7 @@ public class ReservationController {
 
     @Operation(summary = "管理员处理申诉")
     @PostMapping("/appeals/{id}/review")
+    @PreAuthorize("hasAnyAuthority('admin', 'librarian')")
     public Result<Boolean> reviewAppeal(
             @PathVariable Long id,
             @RequestBody Map<String, String> params) {

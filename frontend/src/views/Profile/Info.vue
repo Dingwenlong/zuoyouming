@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onUnmounted, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { UserOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '../../stores/user'
 import { message } from 'ant-design-vue'
@@ -85,7 +85,6 @@ const router = useRouter()
 const isNewUser = computed(() => userStore.isNewUser)
 const userInfo = computed(() => userStore.userInfo)
 
-const formRef = ref()
 const loading = ref(false)
 
 const formState = reactive({

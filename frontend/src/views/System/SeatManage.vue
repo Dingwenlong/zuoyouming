@@ -304,7 +304,7 @@ const handleGenerateRandom = () => {
   const colCount = 5
   
   for (let i = 0; i < count; i++) {
-    const area = areas[Math.floor(Math.random() * areas.length)]
+    const area = areas[Math.floor(Math.random() * areas.length)] || 'A区'
     const seatNo = `${area.charAt(0)}-${timestamp}${i.toString().padStart(2, '0')}`
     
     const row = Math.floor(i / colCount)
